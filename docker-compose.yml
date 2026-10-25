@@ -1,0 +1,60 @@
+# ==============================================================================
+# IoT Home Automation Platform - Docker Compose
+# ==============================================================================
+# Suitable for standalone deployments or Proxmox LXC containers.
+# Persistent SQLite database is stored on the host filesystem: /opt/iot/data
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # Backend API Service (Python FastAPI + APScheduler)
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: iot-backend:v11.0.0
+    container_name: iot-backend
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    env_file:
+      - ./backend/.env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8765
+      - ENVIRONMENT=production
+      - DATABASE_PATH=/app/db/iot.db
+      - TIMEZONE=Europe/Madrid
+    volumes:
+      # Persistent SQLite database on the host/LXC filesystem:
+      - /opt/iot/data:/app/db
+      - /opt/iot/logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ----------------------------------------------------------------------------
+  # Frontend Application (Angular 22 served via Nginx)
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: iot-frontend:v11.0.0
+    container_name: iot-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

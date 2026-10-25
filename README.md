@@ -207,6 +207,42 @@ iot_v11/
 
 ---
 
+## Docker Deployment (Production / Proxmox LXC)
+
+The system includes production Dockerfiles for both services and a unified `docker-compose.yml` that mounts the persistent SQLite database from the host filesystem (e.g. `/opt/iot/data`).
+
+### 1. Build & Start with Docker Compose
+```bash
+# Ensure persistent data directory exists on the host / LXC
+mkdir -p /opt/iot/data /opt/iot/logs
+
+# Build and start containers in background
+docker compose up -d --build
+```
+
+### 2. Upgrading to a New Version Without Data Loss
+When upgrading your backend or frontend container:
+```bash
+# 1. Pull or build the new version tag (e.g. v12.0.0)
+docker compose up -d --build
+
+# The new containers start immediately and mount the same /opt/iot/data/iot.db
+```
+
+### 3. Verification & Logs
+```bash
+# Check running container health
+docker compose ps
+
+# View backend logs
+docker compose logs -f backend
+
+# View frontend access logs
+docker compose logs -f frontend
+```
+
+---
+
 ## Running Tests
 
 ### Backend Integration Tests
