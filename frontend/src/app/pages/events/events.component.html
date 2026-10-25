@@ -1,0 +1,495 @@
+<div class="events-page">
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="header-titles">
+      <div class="title-with-icon">
+        <div class="header-icon-box">
+          <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="page-title">Events</h1>
+          <p class="page-subtitle">Define automated event triggers for platform events such as sunrise, sunset, and sensors</p>
+        </div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="loadData()" [disabled]="loading()">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        Refresh
+      </button>
+      <button class="btn btn-primary" (click)="openCreateModal()">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        New Event Definition
+      </button>
+    </div>
+  </header>
+
+  <!-- Alerts -->
+  @if (successMessage()) {
+    <div class="alert alert-success">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      <span>{{ successMessage() }}</span>
+    </div>
+  }
+
+  @if (errorMessage()) {
+    <div class="alert alert-danger">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span>{{ errorMessage() }}</span>
+    </div>
+  }
+
+  <!-- Controls Bar: Search & Filters (Outside the Card like Schedules) -->
+  <div class="controls-bar">
+    <div class="search-box">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      <input
+        type="text"
+        placeholder="Search events by name, type, parameter, or use case..."
+        [ngModel]="searchQuery()"
+        (ngModelChange)="searchQuery.set($event)"
+      />
+    </div>
+
+    <div class="filter-tabs">
+      <button
+        class="tab-btn"
+        [class.active]="filterType() === 'all'"
+        (click)="filterType.set('all')"
+      >
+        All ({{ eventDefinitions().length }})
+      </button>
+      @for (t of availableTypes(); track t) {
+        <button
+          class="tab-btn"
+          [class.active]="filterType() === t"
+          (click)="filterType.set(t)"
+        >
+          {{ t }}
+        </button>
+      }
+    </div>
+  </div>
+
+  <!-- Main Card -->
+  <div class="table-card">
+    <!-- Loading State -->
+    @if (loading() && eventDefinitions().length === 0) {
+      <div class="empty-state">
+        <div class="spinner"></div>
+        <p>Loading event definitions...</p>
+      </div>
+    }
+
+    <!-- Empty State -->
+    @if (!loading() && filteredDefinitions().length === 0) {
+      <div class="empty-state">
+        <div class="empty-icon-circle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+          </svg>
+        </div>
+        @if (searchQuery() || filterType() !== 'all') {
+          <h3>No matching event definitions</h3>
+          <p>Try adjusting your search criteria or filter options.</p>
+          <button class="btn btn-secondary" (click)="searchQuery.set(''); filterType.set('all')">
+            Reset Filters
+          </button>
+        } @else {
+          <h3>No event definitions configured</h3>
+          <p>Define your first event trigger to automate actions based on sunrise, sunset, or sensors.</p>
+          <button class="btn btn-primary" (click)="openCreateModal()">
+            Create Event Definition
+          </button>
+        }
+      </div>
+    }
+
+    <!-- Definitions Table (Desktop / Tablet) -->
+    @if (filteredDefinitions().length > 0) {
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="id-col">ID</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Parameter</th>
+            <th>Use Case</th>
+            <th>Holiday</th>
+            <th>Notify</th>
+            <th>Status</th>
+            <th class="actions-col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (def of filteredDefinitions(); track def.id) {
+            <tr [class.inactive-row]="def.is_active === 0">
+              <td class="id-col">
+                <span class="id-pill">#{{ def.id }}</span>
+              </td>
+              <td class="name-col">
+                <span class="def-name">{{ def.name }}</span>
+              </td>
+              <td class="type-col">
+                <span class="type-tag">{{ def.type }}</span>
+              </td>
+              <td class="parameter-col">
+                @if (def.parameter) {
+                  <code class="param-code">{{ def.parameter }}</code>
+                } @else {
+                  <span class="text-muted">—</span>
+                }
+              </td>
+              <td class="use-case-col">
+                <span class="tag">{{ def.use_case }}</span>
+              </td>
+              <td class="holiday-col">
+                <span class="badge" [class.badge-holiday]="def.holiday === 'holiday'" [class.badge-workdays]="def.holiday === 'not_holiday'" [class.badge-alldays]="!def.holiday || def.holiday === 'all_days'">
+                  {{ getHolidayLabel(def.holiday) }}
+                </span>
+              </td>
+              <td class="notify-col">
+                @if (def.notify) {
+                  <span class="badge badge-notify" [title]="def.notification_message || 'Standard notification on event trigger'">🔔 Yes</span>
+                } @else {
+                  <span class="text-muted">—</span>
+                }
+              </td>
+              <td class="status-col">
+                <button
+                  class="status-toggle-btn"
+                  [class.active]="def.is_active === 1"
+                  (click)="toggleActive(def)"
+                  title="Toggle active status"
+                >
+                  <span class="status-indicator-dot"></span>
+                  <span>{{ def.is_active === 1 ? 'Active' : 'Paused' }}</span>
+                </button>
+              </td>
+              <td class="actions-col">
+                <div class="action-buttons">
+                  <button
+                    class="icon-btn trigger-btn"
+                    (click)="testTrigger(def)"
+                    [disabled]="firingEventId() === def.id"
+                    title="Simulate Event Trigger"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                  </button>
+                  <button class="icon-btn edit-btn" (click)="openEditModal(def)" title="Edit">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </button>
+                  <button class="icon-btn delete-btn" (click)="deleteEventDefinition(def)" title="Delete">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      <!-- Mobile Cards List -->
+      <div class="mobile-cards-list">
+        @for (def of filteredDefinitions(); track def.id) {
+          <div class="mobile-card" [class.inactive-card]="def.is_active === 0">
+            <div class="mobile-card-top">
+              <div class="mobile-title-box">
+                <span class="m-id">#{{ def.id }}</span>
+                <span class="m-name">{{ def.name }}</span>
+              </div>
+              <div class="mobile-actions">
+                <button
+                  class="icon-btn trigger-btn"
+                  (click)="testTrigger(def)"
+                  [disabled]="firingEventId() === def.id"
+                  title="Simulate Event"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                  </svg>
+                </button>
+                <button class="icon-btn edit-btn" (click)="openEditModal(def)" title="Edit">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+                <button class="icon-btn delete-btn" (click)="deleteEventDefinition(def)" title="Delete">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="mobile-card-body">
+              <div class="m-field">
+                <span class="m-label">Type</span>
+                <span class="type-tag">{{ def.type }}</span>
+              </div>
+              <div class="m-field">
+                <span class="m-label">Parameter</span>
+                <code class="param-code">{{ def.parameter || '—' }}</code>
+              </div>
+              <div class="m-field full-span">
+                <span class="m-label">Use Case</span>
+                <span class="tag">{{ def.use_case }}</span>
+              </div>
+              <div class="m-field full-span">
+                <span class="m-label">Holiday</span>
+                <span class="badge" [class.badge-holiday]="def.holiday === 'holiday'" [class.badge-workdays]="def.holiday === 'not_holiday'" [class.badge-alldays]="!def.holiday || def.holiday === 'all_days'">
+                  {{ getHolidayLabel(def.holiday) }}
+                </span>
+              </div>
+              <div class="m-field">
+                <span class="m-label">Notify</span>
+                <span>{{ def.notify ? '🔔 Yes' : '—' }}</span>
+              </div>
+            </div>
+
+            <div class="mobile-card-footer">
+              <button
+                class="status-toggle-btn"
+                [class.active]="def.is_active === 1"
+                (click)="toggleActive(def)"
+              >
+                <span class="status-indicator-dot"></span>
+                <span>{{ def.is_active === 1 ? 'Active (Tap to pause)' : 'Paused (Tap to activate)' }}</span>
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- Create / Edit Modal -->
+  @if (isModalOpen()) {
+    <div class="modal-backdrop" (click)="closeModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-title-box">
+            <span class="modal-badge">⚡ Events</span>
+            <h2 class="modal-title">
+              {{ modalMode() === 'create' ? 'New Event Definition' : 'Modify Event Definition #' + selectedId() }}
+            </h2>
+          </div>
+          <button class="btn-close" (click)="closeModal()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Name (Free string) -->
+          <div class="form-group">
+            <label class="form-label">Definition Name</label>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="e.g. Morning Blinds Opening"
+              [(ngModel)]="formName"
+            />
+            <span class="form-hint">Descriptive friendly name for this automated event rule.</span>
+          </div>
+
+          <!-- Type (Helper buttons + input) -->
+          <div class="form-group">
+            <label class="form-label">Event Type</label>
+            <div class="event-type-presets">
+              <button
+                type="button"
+                class="event-preset-btn"
+                [class.selected]="formType === 'sunrise'"
+                (click)="setEventType('sunrise')"
+              >
+                🌅 Sunrise
+              </button>
+              <button
+                type="button"
+                class="event-preset-btn"
+                [class.selected]="formType === 'sunset'"
+                (click)="setEventType('sunset')"
+              >
+                🌇 Sunset
+              </button>
+            </div>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="e.g. sunrise, sunset, motion"
+              [(ngModel)]="formType"
+            />
+            <span class="form-hint">The incoming event identifier matching POST /events. Select a preset or enter a custom event type.</span>
+          </div>
+
+          <!-- Parameter (Free string) -->
+          <div class="form-group">
+            <label class="form-label">Parameter (Free String)</label>
+            <input
+              type="text"
+              class="form-control code-input"
+              placeholder="e.g. 06:30, dusk, or any custom value"
+              [(ngModel)]="formParameter"
+            />
+            <span class="form-hint">Optional parameter or metadata associated with this event.</span>
+          </div>
+
+          <!-- Use Case (Strictly Restricted to Configured Use Cases in Settings) -->
+          <div class="form-group">
+            <div class="label-with-link">
+              <label class="form-label">Use Case (Task Identifier)</label>
+              <a routerLink="/settings" (click)="closeModal()" class="inline-link" title="Open Settings to manage use cases">
+                Configure in Settings &rarr;
+              </a>
+            </div>
+
+            @if (configuredUseCases().length === 0) {
+              <div class="empty-warning">
+                <p>No use cases configured yet. Event definitions must link to a use case in Settings.</p>
+                <a routerLink="/settings" (click)="closeModal()" class="btn btn-sm btn-primary">
+                  Go to Settings
+                </a>
+              </div>
+            } @else {
+              <select class="form-control" [(ngModel)]="formUseCase" (change)="onUseCaseChange()">
+                @if (formUseCase && !isUseCaseConfigured(formUseCase)) {
+                  <option [value]="formUseCase" disabled>
+                    ⚠️ {{ formUseCase }} (Not configured in Settings)
+                  </option>
+                }
+                @for (uc of configuredUseCases(); track uc.id) {
+                  <option [value]="uc.name">
+                    {{ uc.name }} [{{ uc.function_name }}]
+                  </option>
+                }
+              </select>
+              <span class="form-hint">Executable function triggered when this event definition fires.</span>
+            }
+          </div>
+
+          <!-- Holiday Schedule Filter -->
+          <div class="form-group">
+            <label class="form-label" for="holiday-filter">Holiday Schedule</label>
+            <select id="holiday-filter" class="form-control" [(ngModel)]="formHoliday">
+              <option value="all_days">All Days (Always run)</option>
+              <option value="holiday">Holidays & Weekends only</option>
+              <option value="not_holiday">Working days only (No holidays/weekends)</option>
+            </select>
+            <span class="form-hint">Controls which days of the year this event is allowed to execute.</span>
+          </div>
+
+          <!-- Parameters (Data - JSON, as in Schedules) -->
+          <div class="form-group">
+            <div class="data-label-row">
+              <label class="form-label">Parameters (Data - JSON)</label>
+              <button
+                type="button"
+                class="btn-format-json"
+                (click)="formatJsonData()"
+                title="Format JSON"
+              >
+                Format JSON
+              </button>
+            </div>
+            <textarea
+              class="form-control code-input data-textarea"
+              rows="4"
+              placeholder='{"entity": "cover.living_room_blind", "position": 100, "not_before": "19:30"}'
+              [(ngModel)]="formData"
+              spellcheck="false"
+            ></textarea>
+            <span class="form-hint">
+              JSON parameters passed to the executable function (e.g. <code>entity</code>, <code>position</code>, and optional <code>not_before</code> hour for blinds).
+            </span>
+          </div>
+
+          <!-- Notification Options -->
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                class="form-checkbox"
+                [checked]="formNotify === 1"
+                (change)="formNotify = $any($event.target).checked ? 1 : 0"
+              />
+              <span class="checkbox-text">🔔 Notify on execution (send to Notification use cases)</span>
+            </label>
+          </div>
+
+          @if (formNotify === 1) {
+            <div class="form-group">
+              <label class="form-label" for="event-notif-msg">Custom Notification Message (Optional)</label>
+              <input
+                id="event-notif-msg"
+                type="text"
+                class="form-control"
+                [(ngModel)]="formNotificationMessage"
+                placeholder="e.g. Sunrise triggered blinds opening"
+              />
+              <span class="form-hint">
+                Leave blank to use the standard message: <code>Event '{{ formName || 'Event' }}' triggered [{{ formType }}] -> Use case: {{ formUseCase || 'use_case' }}</code>
+              </span>
+            </div>
+          }
+
+          <!-- Active Status -->
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                class="form-checkbox"
+                [checked]="formIsActive === 1"
+                (change)="formIsActive = $any($event.target).checked ? 1 : 0"
+              />
+              <span class="checkbox-text">Definition is active (enabled to trigger on incoming events)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="saveEventDefinition()">
+            {{ modalMode() === 'create' ? 'Create Definition' : 'Save Changes' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Confirm Delete Modal -->
+  <app-confirm-modal
+    [isOpen]="isDeleteModalOpen()"
+    title="Delete Event Definition"
+    [message]="eventToDelete() ? 'Are you sure you want to delete event definition #' + eventToDelete()!.id + ' (\'' + eventToDelete()!.name + '\')?' : ''"
+    confirmText="Delete"
+    confirmVariant="danger"
+    [loading]="isDeleting()"
+    (confirmed)="confirmDelete()"
+    (cancelled)="cancelDelete()"
+  ></app-confirm-modal>
+</div>

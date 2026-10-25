@@ -1,0 +1,943 @@
+<div class="settings-page">
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="header-titles">
+      <div class="title-with-icon">
+        <div class="header-icon-box">
+          <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="page-title">Settings</h1>
+          <p class="page-subtitle">Configure system services, modules, and execution rules</p>
+        </div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="loadData()" [disabled]="loading() || loadingDevices()" title="Refresh all settings">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- Alerts -->
+  @if (successMessage()) {
+    <div class="alert alert-success">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      <span>{{ successMessage() }}</span>
+    </div>
+  }
+
+  @if (errorMessage()) {
+    <div class="alert alert-danger">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span>{{ errorMessage() }}</span>
+    </div>
+  }
+
+  <!-- Modular Settings Sections Container -->
+  <div class="settings-sections">
+    <!-- SECTION 1: Use Cases (Compacted in one self-contained card) -->
+    <div class="settings-card use-cases-card">
+      <div class="card-header">
+        <div class="card-header-main">
+          <div class="card-icon-badge-row">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            </div>
+            <div>
+              <div class="card-title-group">
+                <h2 class="card-title">Use Cases</h2>
+                <span class="badge badge-count">{{ useCases().length }} configured</span>
+              </div>
+              <p class="card-subtitle">
+                Define task identifiers and bind them to backend executable functions. Schedules can only run configured use cases.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-header-actions">
+          <button class="btn btn-primary" (click)="openCreateModal()">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New Use Case
+          </button>
+        </div>
+      </div>
+
+      <!-- Test Execution Result (Compacted inside the Use Cases card) -->
+      @if (testResult()) {
+        <div class="test-result-box">
+          <div class="result-top">
+            <div class="result-info">
+              <svg class="result-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              <div>
+                <strong>Test Function Executed Successfully</strong>
+                <p>{{ testResult()?.message }}</p>
+              </div>
+            </div>
+            <button class="result-close-btn" (click)="clearTestResult()" title="Dismiss">✕</button>
+          </div>
+          <div class="result-file-row">
+            <span class="file-label">Result:</span>
+            <code>{{ testResult()?.result || testResult()?.result_file || testResult()?.message }}</code>
+          </div>
+        </div>
+      }
+
+      <!-- Use Cases Content -->
+      <div class="card-content">
+        @if (loading() && useCases().length === 0) {
+          <div class="state-placeholder">
+            <p>Loading use cases...</p>
+          </div>
+        } @else if (useCases().length === 0) {
+          <div class="state-placeholder">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <h3>No use cases configured yet</h3>
+            <p>Create a use case to bind an identifier to an executable function.</p>
+            <button class="btn btn-primary" (click)="openCreateModal()">Create Use Case</button>
+          </div>
+        } @else {
+          <!-- Desktop Table -->
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Use Case Identifier</th>
+                <th>Section</th>
+                <th>Bound Function</th>
+                <th>Description</th>
+                <th>Created</th>
+                <th class="actions-col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (uc of useCases(); track uc.id) {
+                <tr>
+                  <td class="id-cell">#{{ uc.id }}</td>
+                  <td class="name-cell">
+                    <span class="code-badge">{{ uc.name }}</span>
+                  </td>
+                  <td class="section-col">
+                    @if (uc.section) {
+                      <span class="section-badge" [ngClass]="uc.section">
+                        {{ getSectionLabel(uc.section) }}
+                      </span>
+                    } @else {
+                      <span class="text-muted">—</span>
+                    }
+                  </td>
+                  <td>
+                    <span class="fn-badge">
+                      <svg class="fn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                      </svg>
+                      {{ getFunctionLabel(uc.function_name) }}
+                    </span>
+                  </td>
+                  <td class="desc-cell">{{ uc.description || '—' }}</td>
+                  <td class="date-cell">{{ uc.created_at | date:'dd-MM-yyyy HH:mm' }}</td>
+                  <td class="actions-col">
+                    <button
+                      class="btn-test"
+                      (click)="openTestModal(uc)"
+                      [disabled]="testingId() === uc.id"
+                      title="Test-run this function with parameters"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5 3 19 12 5 21 5 3" />
+                      </svg>
+                      <span>{{ testingId() === uc.id ? 'Running...' : 'Test' }}</span>
+                    </button>
+                    <button class="icon-btn edit-btn" (click)="openEditModal(uc)" title="Modify Use Case">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                    <button class="icon-btn delete-btn" (click)="deleteUseCase(uc)" title="Delete Use Case">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+
+          <!-- Mobile Cards -->
+          <div class="mobile-cards-list">
+            @for (uc of useCases(); track uc.id) {
+              <div class="mobile-card-item">
+                <div class="mobile-top">
+                  <span class="code-badge">{{ uc.name }}</span>
+                  <div class="mobile-actions">
+                    <button class="icon-btn edit-btn" (click)="openEditModal(uc)" title="Edit">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                    <button class="icon-btn delete-btn" (click)="deleteUseCase(uc)" title="Delete">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="mobile-body">
+                  @if (uc.section) {
+                    <div class="m-row">
+                      <span class="m-label">Section</span>
+                      <span class="section-badge" [ngClass]="uc.section">
+                        {{ getSectionLabel(uc.section) }}
+                      </span>
+                    </div>
+                  }
+                  <div class="m-row">
+                    <span class="m-label">Function</span>
+                    <span class="fn-badge">{{ getFunctionLabel(uc.function_name) }}</span>
+                  </div>
+                  @if (uc.description) {
+                    <div class="m-row">
+                      <span class="m-label">Description</span>
+                      <span class="m-desc">{{ uc.description }}</span>
+                    </div>
+                  }
+                </div>
+
+                <div class="mobile-footer">
+                  <button
+                    class="btn-test"
+                    (click)="openTestModal(uc)"
+                    [disabled]="testingId() === uc.id"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                    <span>{{ testingId() === uc.id ? 'Running...' : 'Test Function' }}</span>
+                  </button>
+                  <span class="id-tag">#{{ uc.id }}</span>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- SECTION 2: Devices Configuration (Home Assistant Integration) -->
+    <div class="settings-card devices-card">
+      <div class="card-header">
+        <div class="card-header-main">
+          <div class="card-icon-badge-row">
+            <div class="card-icon devices-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+            </div>
+            <div>
+              <div class="card-title-group">
+                <h2 class="card-title">Devices</h2>
+                <span class="badge badge-count">{{ devices().length }} configured</span>
+              </div>
+              <p class="card-subtitle">
+                Configure device names, types, and bind them to Home Assistant entities for future app automations.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-header-actions">
+          <button class="btn btn-primary" (click)="openCreateDeviceModal()">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New Device
+          </button>
+        </div>
+      </div>
+
+      <!-- Home Assistant Info Banner (if offline or using demo) -->
+      @if (!hassConnected() && hassError()) {
+        <div class="hass-info-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <div>
+            <strong>Home Assistant integration status:</strong>
+            <span>{{ hassError() }}</span>
+          </div>
+        </div>
+      }
+
+      <!-- Devices Content -->
+      <div class="card-content">
+        @if (loadingDevices() && devices().length === 0) {
+          <div class="state-placeholder">
+            <p>Loading devices...</p>
+          </div>
+        } @else if (devices().length === 0) {
+          <div class="state-placeholder">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+            <h3>No devices configured yet</h3>
+            <p>Map device names and types to Home Assistant entities for use across the IoT application.</p>
+            <button class="btn btn-primary" (click)="openCreateDeviceModal()">Configure Device</button>
+          </div>
+        } @else {
+          <!-- Desktop Devices Table -->
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Device Name</th>
+                <th>Type</th>
+                <th>Home Assistant Entity</th>
+                <th>Created</th>
+                <th class="actions-col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (dev of devices(); track dev.id) {
+                <tr>
+                  <td class="id-cell">#{{ dev.id }}</td>
+                  <td class="name-cell">
+                    <span class="device-name-text">{{ dev.name }}</span>
+                  </td>
+                  <td>
+                    <span class="device-type-badge" [ngClass]="dev.type">
+                      <span class="type-icon">{{ getDeviceTypeInfo(dev.type).icon }}</span>
+                      <span class="type-name">{{ getDeviceTypeInfo(dev.type).label }}</span>
+                    </span>
+                  </td>
+                  <td>
+                    <div class="entity-display">
+                      <span class="entity-name">{{ getEntityFriendlyName(dev.entity_id) }}</span>
+                      <code class="entity-id-code">{{ dev.entity_id }}</code>
+                    </div>
+                  </td>
+                  <td class="date-cell">{{ dev.created_at | date:'dd-MM-yyyy HH:mm' }}</td>
+                  <td class="actions-col">
+                    <button class="icon-btn edit-btn" (click)="openEditDeviceModal(dev)" title="Modify Device">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                    <button class="icon-btn delete-btn" (click)="deleteDevice(dev)" title="Delete Device">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+
+          <!-- Mobile Devices Cards -->
+          <div class="mobile-cards-list">
+            @for (dev of devices(); track dev.id) {
+              <div class="mobile-card-item">
+                <div class="mobile-top">
+                  <div class="device-title-wrap">
+                    <span class="device-name-text">{{ dev.name }}</span>
+                    <span class="device-type-badge" [ngClass]="dev.type">
+                      <span class="type-icon">{{ getDeviceTypeInfo(dev.type).icon }}</span>
+                      <span class="type-name">{{ getDeviceTypeInfo(dev.type).label }}</span>
+                    </span>
+                  </div>
+                  <div class="mobile-actions">
+                    <button class="icon-btn edit-btn" (click)="openEditDeviceModal(dev)" title="Edit">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                    <button class="icon-btn delete-btn" (click)="deleteDevice(dev)" title="Delete">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="mobile-body">
+                  <div class="m-row">
+                    <span class="m-label">Entity</span>
+                    <div class="entity-display">
+                      <span class="entity-name">{{ getEntityFriendlyName(dev.entity_id) }}</span>
+                      <code class="entity-id-code">{{ dev.entity_id }}</code>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mobile-footer">
+                  <span class="date-cell">{{ dev.created_at | date:'dd-MM-yyyy HH:mm' }}</span>
+                  <span class="id-tag">#{{ dev.id }}</span>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- SECTION 3: Heating System Settings -->
+    <div class="settings-card heating-settings-card">
+      <div class="card-header">
+        <div class="card-header-main">
+          <div class="card-icon-badge-row">
+            <div class="card-icon heating-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2c0 4.5-5 7-5 12a5 5 0 0 0 10 0c0-5-5-7.5-5-12z" />
+              </svg>
+            </div>
+            <div>
+              <div class="card-title-group">
+                <h2 class="card-title">Heating Settings</h2>
+                <span class="badge badge-count">{{ heatingIntervalMinutes() }} min interval</span>
+              </div>
+              <p class="card-subtitle">
+                Configure recurrent evaluation schedule and heating regulation interval.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-header-actions">
+          <button
+            class="btn btn-primary"
+            [disabled]="isSavingSettings() || heatingIntervalMinutes() < 1"
+            (click)="saveHeatingSettings()"
+          >
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
+            </svg>
+            {{ isSavingSettings() ? 'Saving...' : 'Save Settings' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="heating-setting-row">
+          <div class="setting-info">
+            <span class="setting-title">Recurrent Check Interval</span>
+            <p class="setting-desc">
+              When the heating system is active, the system reviews temperature sensors against the active heating map rules every {{ heatingIntervalMinutes() }} minutes and automatically triggers heating devices.
+            </p>
+            <div class="schedule-sync-pill">
+              <span class="pill-dot"></span>
+              <span>Syncs with schedule: <code>Auto - Heating Control</code> (cron: <code>*/{{ heatingIntervalMinutes() }} * * * *</code>)</span>
+            </div>
+          </div>
+
+          <div class="setting-control-group">
+            <div class="stepper-control">
+              <button
+                type="button"
+                class="stepper-btn stepper-btn-dec"
+                (click)="adjustInterval(-1)"
+                [disabled]="heatingIntervalMinutes() <= 1"
+                title="Decrease 1 minute"
+                aria-label="Decrease interval"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
+
+              <div class="stepper-input-wrapper">
+                <input
+                  type="number"
+                  class="stepper-input"
+                  min="1"
+                  max="720"
+                  step="1"
+                  [ngModel]="heatingIntervalMinutes()"
+                  (ngModelChange)="heatingIntervalMinutes.set($event)"
+                  placeholder="15"
+                />
+                <span class="stepper-unit">min</span>
+              </div>
+
+              <button
+                type="button"
+                class="stepper-btn stepper-btn-inc"
+                (click)="adjustInterval(1)"
+                [disabled]="heatingIntervalMinutes() >= 720"
+                title="Increase 1 minute"
+                aria-label="Increase interval"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="preset-pills-row">
+              @for (preset of presetIntervals; track preset) {
+                <button
+                  type="button"
+                  class="preset-pill"
+                  [class.active]="heatingIntervalMinutes() === preset"
+                  (click)="selectPresetInterval(preset)"
+                >
+                  {{ preset }}m
+                </button>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Use Case Create / Edit Modal -->
+  @if (isModalOpen()) {
+    <div class="modal-backdrop" (click)="closeModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h2 class="modal-title">
+            {{ modalMode() === 'create' ? 'Configure New Use Case' : 'Modify Use Case #' + selectedUseCaseId() }}
+          </h2>
+          <button class="btn-close" (click)="closeModal()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Use Case Identifier (Name)</label>
+            <input
+              type="text"
+              class="form-control code-input"
+              placeholder="e.g. create_datetime_file"
+              [(ngModel)]="formName"
+            />
+            <span class="form-hint">Unique name selected in schedules to trigger this action</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Executable Function</label>
+            <select class="form-control" [(ngModel)]="formFunctionName">
+              @for (fn of availableFunctions(); track fn.id) {
+                <option [value]="fn.id">{{ fn.name }} ({{ fn.id }})</option>
+              }
+            </select>
+            <span class="form-hint">
+              {{ getSelectedFunctionDescription() }}
+            </span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Section (Optional)</label>
+            <select class="form-control" [(ngModel)]="formSection">
+              <option value="">-- None (General) --</option>
+              <option value="irrigation">💧 Irrigation</option>
+              <option value="blinds">🪟 Blinds</option>
+              <option value="rain">🌧️ Rain</option>
+              <option value="notification">🔔 Notification</option>
+              <option value="heating_control">🔥 Heating Control</option>
+              <option value="heating_recurrent">🔥 Heating Recurrent</option>
+            </select>
+            <span class="form-hint">Assign this use case to a specific feature section (e.g. Irrigation, Blinds, Rain, Notification, Heating Control, or Heating Recurrent)</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Description (Optional)</label>
+            <textarea
+              class="form-control"
+              rows="3"
+              placeholder="Describe what this use case triggers..."
+              [(ngModel)]="formDescription"
+            ></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="saveUseCase()">
+            {{ modalMode() === 'create' ? 'Create Use Case' : 'Save Changes' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Device Create / Edit Modal -->
+  @if (isDeviceModalOpen()) {
+    <div class="modal-backdrop" (click)="closeDeviceModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h2 class="modal-title">
+            {{ deviceModalMode() === 'create' ? 'Configure New Device' : 'Modify Device #' + selectedDeviceId() }}
+          </h2>
+          <button class="btn-close" (click)="closeDeviceModal()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Device Name -->
+          <div class="form-group">
+            <label class="form-label">Device Name</label>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="e.g. Living Room Main Light"
+              [(ngModel)]="formDeviceName"
+            />
+            <span class="form-hint">Human-readable friendly name used in the application</span>
+          </div>
+
+          <!-- Device Type -->
+          <div class="form-group">
+            <label class="form-label">Device Type</label>
+            <div class="type-options-grid">
+              @for (dt of deviceTypes; track dt.id) {
+                <label
+                  class="type-option-card"
+                  [class.selected]="formDeviceType === dt.id"
+                >
+                  <input
+                    type="radio"
+                    name="deviceType"
+                    [value]="dt.id"
+                    [(ngModel)]="formDeviceType"
+                  />
+                  <span class="type-opt-icon">{{ dt.icon }}</span>
+                  <span class="type-opt-name">{{ dt.label }}</span>
+                </label>
+              }
+            </div>
+          </div>
+
+          <!-- Home Assistant Entity Search & Select -->
+          <div class="form-group">
+            <div class="entity-label-row">
+              <label class="form-label">Home Assistant Entity</label>
+              <span class="entities-count">{{ hassEntities().length }} entities available</span>
+            </div>
+
+            <!-- Optional Quick Filter for Entity Dropdown -->
+            <input
+              type="text"
+              class="form-control search-filter-input"
+              placeholder="Filter entities (e.g. light, living, switch)..."
+              [ngModel]="entityFilter()"
+              (ngModelChange)="entityFilter.set($event)"
+            />
+
+            <select class="form-control" [(ngModel)]="formDeviceEntityId">
+              @for (entity of filteredEntities(); track entity.entity_id) {
+                <option [value]="entity.entity_id">
+                  {{ entity.friendly_name }} ({{ entity.entity_id }})
+                </option>
+              }
+            </select>
+            <span class="form-hint">
+              Selected: <code>{{ formDeviceEntityId }}</code>
+            </span>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeDeviceModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="saveDevice()">
+            {{ deviceModalMode() === 'create' ? 'Create Device' : 'Save Changes' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Test Use Case Modal (Allows configuring parameters before execution) -->
+  @if (isTestModalOpen() && testingUseCase(); as uc) {
+    <div class="modal-backdrop" (click)="closeTestModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">Test Use Case: {{ uc.name }}</h2>
+            <p class="modal-subtitle">
+              Configure parameters before test-executing function <code>{{ uc.function_name }}</code>
+            </p>
+          </div>
+          <button class="btn-close" (click)="closeTestModal()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          @if (testModalError()) {
+            <div class="alert alert-danger mb-3">
+              <span>{{ testModalError() }}</span>
+            </div>
+          }
+
+          <!-- Quick presets based on function -->
+          @if (uc.function_name === 'add_holiday') {
+            <div class="form-group">
+              <label class="form-label">Quick Parameter Presets</label>
+              <div class="quick-preset-btns">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ when: 'today', name: 'Test Holiday Today' })"
+                >
+                  📅 Today
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ when: 'tomorrow', name: 'Test Holiday Tomorrow' })"
+                >
+                  ⏭ Tomorrow
+                </button>
+              </div>
+            </div>
+          } @else if (uc.function_name === 'start_irrigation') {
+            <div class="form-group">
+              <label class="form-label">Quick Duration Presets</label>
+              <div class="quick-preset-btns">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ entity_id: 'switch.garden_irrigation_zone1', seconds: 5 })"
+                >
+                  ⏱ 5s
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ entity_id: 'switch.garden_irrigation_zone1', seconds: 30 })"
+                >
+                  ⏱ 30s
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ entity_id: 'switch.garden_irrigation_zone1', seconds: 60 })"
+                >
+                  ⏱ 60s
+                </button>
+              </div>
+            </div>
+          } @else if (uc.function_name === 'move_blind') {
+            <div class="form-group">
+              <label class="form-label">Quick Position Presets</label>
+              <div class="quick-preset-btns">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ entity: 'cover.living_room_blind', position: 0, not_before: '' })"
+                >
+                  ⬇ Close (0%)
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ entity: 'cover.living_room_blind', position: 50, not_before: '' })"
+                >
+                  ⬍ Half (50%)
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ entity: 'cover.living_room_blind', position: 100, not_before: '' })"
+                >
+                  ⬆ Open (100%)
+                </button>
+              </div>
+            </div>
+          } @else if (uc.function_name === 'get_year_holidays') {
+            <div class="form-group">
+              <label class="form-label">Quick County Presets</label>
+              <div class="quick-preset-btns">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ county: 'ES-CT' })"
+                >
+                  📍 Default: Catalunya (ES-CT)
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ county: 'ES-MD' })"
+                >
+                  📍 Madrid (ES-MD)
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ county: 'ES-AN' })"
+                >
+                  📍 Andalucía (ES-AN)
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ county: 'ALL' })"
+                >
+                  🇪🇸 All Spain
+                </button>
+              </div>
+            </div>
+          } @else if (uc.function_name === 'send_telegram_alert') {
+            <div class="form-group">
+              <label class="form-label">Quick Alert Presets</label>
+              <div class="quick-preset-btns">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ message: '🚨 Alert: Motion detected in garden!' })"
+                >
+                  🚶 Motion Alert
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ message: '🌧️ Alert: Rain detected! Blinds lowering automatically.' })"
+                >
+                  🌧️ Rain Alert
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ message: '💧 Alert: Irrigation cycle started for lawn.' })"
+                >
+                  💧 Irrigation Alert
+                </button>
+              </div>
+            </div>
+          } @else if (uc.function_name === 'start_heating') {
+            <div class="preset-section">
+              <span class="preset-label">Quick Action Presets:</span>
+              <div class="preset-buttons">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ action: 'on' })"
+                >
+                  🟢 Activate Heating (ON)
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({ action: 'off' })"
+                >
+                  🔴 Deactivate Heating (OFF)
+                </button>
+              </div>
+            </div>
+          } @else if (uc.function_name === 'control_heating') {
+            <div class="preset-section">
+              <span class="preset-label">Quick Action Presets:</span>
+              <div class="preset-buttons">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  (click)="setTestParamPreset({})"
+                >
+                  ⚙️ Evaluate & Control Heating
+                </button>
+              </div>
+            </div>
+          }
+
+          <!-- JSON Parameters -->
+          <div class="form-group">
+            <div class="label-with-format">
+              <label class="form-label" for="test-params-json">
+                Parameters (Data - JSON)
+              </label>
+              <button
+                type="button"
+                class="btn-format-json"
+                (click)="formatTestJson()"
+                title="Format JSON"
+              >
+                Format JSON
+              </button>
+            </div>
+            <textarea
+              id="test-params-json"
+              class="form-control code-input"
+              rows="6"
+              [ngModel]="testParamsJson()"
+              (ngModelChange)="testParamsJson.set($event)"
+              placeholder="{}"
+            ></textarea>
+            <span class="form-hint">
+              JSON parameters passed to function '{{ uc.function_name }}' during execution.
+            </span>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeTestModal()" [disabled]="testingId() === uc.id">
+            Cancel
+          </button>
+          <button class="btn btn-primary" (click)="executeTest()" [disabled]="testingId() === uc.id">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+            <span>{{ testingId() === uc.id ? 'Executing...' : 'Run Test Now' }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Confirm Modal -->
+  <app-confirm-modal
+    [isOpen]="isConfirmModalOpen()"
+    [title]="confirmModalTitle()"
+    [message]="confirmModalMessage()"
+    confirmText="Delete"
+    confirmVariant="danger"
+    [loading]="isConfirming()"
+    (confirmed)="handleConfirmModal()"
+    (cancelled)="closeConfirmModal()"
+  ></app-confirm-modal>
+</div>

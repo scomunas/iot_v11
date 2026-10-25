@@ -1,0 +1,218 @@
+<div class="app-layout">
+  <!-- Mobile Top Bar (Hidden on desktop) -->
+  <header class="mobile-top-bar">
+    <button class="hamburger-btn" (click)="toggleMobileSidebar()" aria-label="Toggle navigation menu">
+      @if (isMobileSidebarOpen()) {
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      } @else {
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      }
+    </button>
+
+    <div class="mobile-brand">
+      <img src="iot-logo.png" alt="IoT Logo" class="mobile-logo" />
+      <span class="mobile-title">{{ title }}</span>
+    </div>
+
+    <div class="mobile-status-dot" [ngClass]="healthService.status()" title="Backend Status"></div>
+  </header>
+
+  <!-- Backdrop for Mobile Sidebar Drawer -->
+  @if (isMobileSidebarOpen()) {
+    <div class="sidebar-backdrop" (click)="closeMobileSidebar()"></div>
+  }
+
+  <!-- Left Sidebar (Desktop Static / Mobile Drawer) -->
+  <aside class="sidebar" [class.mobile-open]="isMobileSidebarOpen()">
+    <!-- Top: Logo & App Title -->
+    <div class="sidebar-top">
+      <div class="logo-wrapper">
+        <img src="iot-logo.png" alt="IoT Logo" class="app-logo" />
+      </div>
+      <div class="app-info">
+        <span class="app-title">{{ title }}</span>
+        <span class="app-badge">Smart Hub</span>
+      </div>
+      <!-- Close button on mobile sidebar -->
+      <button class="sidebar-close-btn" (click)="closeMobileSidebar()" aria-label="Close menu">
+        &times;
+      </button>
+    </div>
+
+    <!-- Middle: Navigation Sections -->
+    <nav class="sidebar-nav">
+      <div class="nav-group-title">MAIN</div>
+      <a
+        routerLink="/dashboard"
+        routerLinkActive="active"
+        class="nav-item"
+        (click)="closeMobileSidebar()"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7" rx="1" />
+          <rect x="14" y="3" width="7" height="7" rx="1" />
+          <rect x="14" y="14" width="7" height="7" rx="1" />
+          <rect x="3" y="14" width="7" height="7" rx="1" />
+        </svg>
+        <span class="nav-label">Dashboard</span>
+      </a>
+
+      <a
+        routerLink="/irrigation"
+        routerLinkActive="active"
+        class="nav-item"
+        (click)="closeMobileSidebar()"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+        </svg>
+        <span class="nav-label">Irrigation</span>
+      </a>
+
+      <a
+        routerLink="/blinds"
+        routerLinkActive="active"
+        class="nav-item"
+        (click)="closeMobileSidebar()"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <line x1="3" y1="9" x2="21" y2="9" />
+          <line x1="3" y1="15" x2="21" y2="15" />
+          <line x1="9" y1="3" x2="9" y2="21" />
+        </svg>
+        <span class="nav-label">Blinds</span>
+      </a>
+
+      <a
+        routerLink="/heating"
+        routerLinkActive="active"
+        class="nav-item"
+        (click)="closeMobileSidebar()"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2c0 4.5-5 7-5 12a5 5 0 0 0 10 0c0-5-5-7.5-5-12z" />
+        </svg>
+        <span class="nav-label">Heating</span>
+      </a>
+
+      <a
+        routerLink="/schedules"
+        routerLinkActive="active"
+        class="nav-item"
+        (click)="closeMobileSidebar()"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+        <span class="nav-label">Schedules</span>
+      </a>
+
+      <a
+        routerLink="/events"
+        routerLinkActive="active"
+        class="nav-item"
+        (click)="closeMobileSidebar()"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+        <span class="nav-label">Events</span>
+      </a>
+
+      <a
+        routerLink="/holidays"
+        routerLinkActive="active"
+        class="nav-item"
+        (click)="closeMobileSidebar()"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+        <span class="nav-label">Holidays</span>
+      </a>
+
+      <a
+        routerLink="/logs"
+        routerLinkActive="active"
+        class="nav-item"
+        (click)="closeMobileSidebar()"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="4 17 10 11 4 5" />
+          <line x1="12" y1="19" x2="20" y2="19" />
+        </svg>
+        <span class="nav-label">Log</span>
+      </a>
+
+      <a
+        routerLink="/settings"
+        routerLinkActive="active"
+        class="nav-item"
+        (click)="closeMobileSidebar()"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        <span class="nav-label">Settings</span>
+      </a>
+    </nav>
+
+    <!-- Bottom: Backend Health Check & Version -->
+    <div class="sidebar-bottom">
+      <!-- Services Health Widget -->
+      <div class="system-status-widget">
+        <div class="status-header">
+          <span class="status-header-title">SYSTEM STATUS</span>
+          <button class="btn-refresh" (click)="refreshBackend()" title="Re-check health">
+            <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="status-items">
+          <div class="status-item">
+            <span class="status-dot" [ngClass]="healthService.status()"></span>
+            <span class="status-name">Backend</span>
+          </div>
+          <div class="status-item">
+            <span class="status-dot" [ngClass]="healthService.schedulerStatus()"></span>
+            <span class="status-name">Scheduler</span>
+          </div>
+          <div class="status-item">
+            <span class="status-dot" [ngClass]="healthService.databaseStatus()"></span>
+            <span class="status-name">Database</span>
+          </div>
+          <div class="status-item">
+            <span class="status-dot" [ngClass]="healthService.homeAssistantStatus()"></span>
+            <span class="status-name">Home Assistant</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Version Indicator -->
+      <div class="version-tag">
+        <span class="version-label">Version</span>
+        <span class="version-value">{{ version }}</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="main-content">
+    <router-outlet></router-outlet>
+  </main>
+</div>

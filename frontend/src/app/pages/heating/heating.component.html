@@ -1,0 +1,1175 @@
+<div class="heating-page">
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="header-titles">
+      <div class="title-with-icon">
+        <div class="header-icon-box heating-icon-box">
+          <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2c0 4.5-5 7-5 12a5 5 0 0 0 10 0c0-5-5-7.5-5-12z" />
+          </svg>
+        </div>
+        <div>
+          <div class="title-badge-row">
+            <h1 class="page-title">Heating</h1>
+          </div>
+          <p class="page-subtitle">Heating temperature maps, master control, and automatic map switching routines</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="loadAllData()" [disabled]="loading()">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6" />
+          <path d="M1 20v-6h6" />
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        Refresh
+      </button>
+
+      <!-- Master System Controls (Integrated at top-right of the header) -->
+      <div class="header-system-controls">
+        @if (heatingState() === 'off' && deactivatedUntil()) {
+          <span class="badge badge-warning header-paused-badge" title="Paused until {{ deactivatedUntil() | date:'medium' }}">
+            ⏳ Paused until {{ deactivatedUntil() | date:'shortTime' }}
+          </span>
+
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            (click)="openDeactivateModal()"
+            [disabled]="loading()"
+            title="Change active deactivation timer"
+          >
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            Change Timer
+          </button>
+
+          <button
+            type="button"
+            class="btn btn-danger-outline btn-sm"
+            (click)="cancelDeferredStart()"
+            [disabled]="loading()"
+            title="Cancel deferred start and keep heating deactivated"
+          >
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+            Cancel Timer
+          </button>
+        } @else if (heatingState() === 'on') {
+          <button
+            type="button"
+            class="btn btn-warning btn-sm"
+            (click)="openDeactivateModal()"
+            [disabled]="loading()"
+            title="Program deferred deactivation for heating system"
+          >
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            Deactivate Until...
+          </button>
+        }
+
+        <div class="system-toggle-group">
+          <label class="switch-control" title="Toggle Heating System State">
+            <input
+              type="checkbox"
+              [checked]="heatingState() === 'on'"
+              (change)="onToggleCheck($event)"
+              [disabled]="loading()"
+            />
+            <span class="switch-slider"></span>
+          </label>
+          <span class="system-toggle-label" [class.is-active]="heatingState() === 'on'">
+            {{ heatingState() === 'on' ? 'Active' : 'Deactivated' }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Alerts -->
+  @if (errorMessage()) {
+    <div class="alert alert-danger">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span>{{ errorMessage() }}</span>
+      <button class="alert-close" (click)="errorMessage.set(null)">&times;</button>
+    </div>
+  }
+
+  @if (successMessage()) {
+    <div class="alert alert-success">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      <span>{{ successMessage() }}</span>
+      <button class="alert-close" (click)="successMessage.set(null)">&times;</button>
+    </div>
+  }
+
+  <!-- ========================================================================= -->
+  <!-- SECTION 1: WEEKLY CALENDAR SCHEDULE -->
+  <!-- ========================================================================= -->
+  <div class="calendar-section-content">
+    <!-- Temperature Devices Grid Card -->
+    <section class="card temp-sensors-card">
+      <div class="card-header">
+        <div class="card-header-main">
+          <div class="card-icon-badge-row">
+            <div class="card-icon temp-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" />
+              </svg>
+            </div>
+            <div>
+              <div class="card-title-group">
+                <h3 class="card-title">Temperature Sensors</h3>
+                <span class="badge badge-count">{{ temperatureDevices().length }} sensors</span>
+              </div>
+              <p class="card-subtitle">
+                Current sensor temperatures and active heatmap objectives
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-header-actions">
+          <div class="autorefresh-control">
+            <label class="switch-control switch-control-sm" title="Auto-refresh temperatures every 15 seconds">
+              <input
+                type="checkbox"
+                [checked]="autoRefreshEnabled()"
+                (change)="toggleAutoRefresh($event)"
+              />
+              <span class="switch-slider"></span>
+            </label>
+            <span class="autorefresh-label" [class.is-active]="autoRefreshEnabled()">
+              Auto-refresh (15s)
+            </span>
+          </div>
+          <button
+            type="button"
+            class="refresh-btn"
+            (click)="refreshTemperatures()"
+            [disabled]="isRefreshingTemps()"
+            title="Refresh temperatures now"
+          >
+            <svg
+              [class.spinning]="isRefreshingTemps()"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="temp-sensors-body">
+        @if (temperatureDevices().length === 0) {
+          <div class="empty-sensors-hint">
+            <div class="empty-mini-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" />
+              </svg>
+            </div>
+            <div>
+              <p class="empty-hint-text">No temperature sensors configured yet.</p>
+              <p class="empty-subtext">Add temperature devices in Settings to monitor ambient rooms.</p>
+            </div>
+            <a routerLink="/settings" class="btn btn-sm btn-secondary">
+              Settings &rarr;
+            </a>
+          </div>
+        } @else {
+          <div class="temp-devices-grid">
+            @for (dev of temperatureDevices(); track dev.id) {
+              @let target = getDeviceRule(calendarResolvedMap() || activeMap(), dev.id);
+              <div class="temp-device-card">
+                <span class="temp-device-name" [title]="dev.name">{{ dev.name }}</span>
+                <div class="temp-device-readings">
+                  <span class="temp-current" title="Current temperature">
+                    {{ dev.current_temperature != null ? formatTemp(dev.current_temperature) + ' °C' : '--' }}
+                  </span>
+                  <span class="temp-target-badge" title="Objective temperature from active heatmap">
+                    obj: {{ target != null ? formatTemp(target) + ' °C' : '-' }}
+                  </span>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- Unified Weekly Schedule Overview Card -->
+    <section class="card weekly-schedule-card">
+      <div class="calendar-card-header">
+        <div class="header-main">
+          <div class="card-icon-title-group">
+            <div class="card-mini-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+            </div>
+            <div>
+              <h3 class="card-title">Weekly Heating Schedule</h3>
+              <p class="card-subtitle">24-hour visual overview of active heating maps across all days</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Heating Map Center Bubble -->
+        <div class="header-active-map-center">
+          <div class="active-map-bubble">
+            <span
+              class="active-bubble-dot"
+              [style.background-color]="getMapColor(calendarResolvedMap()?.id || activeMapId())"
+            ></span>
+            <span class="active-bubble-label">Active Map:</span>
+            <strong class="active-bubble-name">{{ calendarResolvedMap()?.name || activeMap()?.name || 'Default' }}</strong>
+          </div>
+        </div>
+
+        <!-- Heating Maps Color Legend -->
+        <div class="schedule-legend">
+          @for (map of heatingMaps(); track map.id) {
+            <div class="legend-item" [title]="map.name + (map.is_default ? ' (Default)' : '')">
+              <span class="legend-dot" [style.background-color]="getMapColor(map.id)"></span>
+              <span class="legend-label">{{ map.name }}</span>
+              @if (map.is_default) {
+                <span class="legend-default-tag">Def</span>
+              }
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- Schedule Matrix with Shared 24-Hour Time Ruler -->
+      <div class="schedule-matrix-wrapper">
+        <div class="schedule-matrix">
+          <!-- Shared Time Ruler Header -->
+          <div class="matrix-header-row">
+            <div class="col-day-label">
+              <span class="ruler-title">Day</span>
+            </div>
+            <div class="col-timeline-ruler">
+              <div class="ruler-ticks">
+                <span class="ruler-tick" style="left: 0%">00:00</span>
+                <span class="ruler-tick tick-hide-mobile" style="left: 12.5%">03:00</span>
+                <span class="ruler-tick" style="left: 25%">06:00</span>
+                <span class="ruler-tick tick-hide-mobile" style="left: 37.5%">09:00</span>
+                <span class="ruler-tick" style="left: 50%">12:00</span>
+                <span class="ruler-tick tick-hide-mobile" style="left: 62.5%">15:00</span>
+                <span class="ruler-tick" style="left: 75%">18:00</span>
+                <span class="ruler-tick tick-hide-mobile" style="left: 87.5%">21:00</span>
+                <span class="ruler-tick" style="left: 100%; transform: translateX(-100%)">24:00</span>
+              </div>
+            </div>
+            <div class="col-action">
+              <span class="ruler-title">Action</span>
+            </div>
+          </div>
+
+          <!-- All 8 Day Rows Stacked In The Same Card -->
+          @for (day of calendarDays(); track day.id) {
+            @let isToday = (calendarCurrentDayOfWeek() === day.id);
+            @let slots = getDaySlots(day.id);
+            <div class="matrix-day-row" [class.is-today-row]="isToday">
+              <div class="col-day-label">
+                <div class="day-label-inner">
+                  <span class="day-name day-name-full" [title]="day.name">{{ day.name }}</span>
+                  <span class="day-name day-name-short" [title]="day.name">{{ day.name.slice(0, 3) }}</span>
+                  @if (isToday) {
+                    <span class="badge badge-today">TODAY</span>
+                  }
+                  @if (day.id === 7) {
+                    <span class="badge badge-holiday">HOLIDAY</span>
+                  }
+                </div>
+              </div>
+
+              <div class="col-timeline-bar">
+                <div
+                  class="timeline-bar"
+                  (click)="openEditDayModal(day)"
+                  title="Click to edit {{ day.name }} schedule"
+                >
+                  @for (slot of slots; track $index) {
+                    <div
+                      class="timeline-slot"
+                      [style.width.%]="getSlotWidth(slot)"
+                      [style.background-color]="getMapColor(slot.map_id)"
+                      [title]="day.name + ': ' + (slot.map_name || getMapName(slot.map_id)) + ' (' + slot.start_time + ' - ' + slot.end_time + ')'"
+                    >
+                      <span class="slot-bar-label">
+                        {{ slot.start_time }}–{{ slot.end_time }} {{ slot.map_name || getMapName(slot.map_id) }}
+                      </span>
+                    </div>
+                  }
+                  @if (isToday) {
+                    <div
+                      class="timeline-now-marker"
+                      [style.left.%]="getCurrentTimePercentage()"
+                      title="Current Time: {{ calendarCurrentTime() }}"
+                    ></div>
+                  }
+                </div>
+              </div>
+
+              <div class="col-action">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-edit-day"
+                  (click)="openEditDayModal(day)"
+                  title="Configure {{ day.name }} Parts of the Day"
+                >
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                  </svg>
+                  <span class="btn-text">Edit</span>
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- SECTION 2: HEATING MAPS (PLACED UNDER WEEKLY SCHEDULE) -->
+  <!-- ========================================================================= -->
+  <div class="maps-section-content">
+    <div class="maps-table-card">
+      <div class="card-header">
+        <div class="card-header-main">
+          <div class="card-icon-badge-row">
+            <div class="card-icon heating-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2c0 4.5-5 7-5 12a5 5 0 0 0 10 0c0-5-5-7.5-5-12z" />
+              </svg>
+            </div>
+            <div>
+              <div class="card-title-group">
+                <h3 class="card-title">Heating Maps</h3>
+                <span class="badge badge-count">{{ heatingMaps().length }} configured</span>
+              </div>
+              <p class="card-subtitle">
+                Define target minimum temperature thresholds for each sensor across different modes
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-header-actions">
+          <button class="btn btn-sm btn-primary" (click)="openCreateMapModal()">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New Heating Map
+          </button>
+        </div>
+      </div>
+
+      <!-- Maps Table or Empty State -->
+      @if (heatingMaps().length === 0) {
+        <div class="empty-state">
+          <div class="empty-icon-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 2c0 4.5-5 7-5 12a5 5 0 0 0 10 0c0-5-5-7.5-5-12z" />
+            </svg>
+          </div>
+          <h4>No Heating Maps Configured</h4>
+          <p>Create a heating map to define minimum temperature rules for each temperature sensor.</p>
+          <button class="btn btn-primary" (click)="openCreateMapModal()">
+            Create First Heating Map
+          </button>
+        </div>
+      } @else {
+        <div class="table-responsive">
+          <table class="maps-table">
+            <thead>
+              <tr>
+                <th class="map-name-col">HEATING MAP</th>
+                <th class="status-col">STATUS</th>
+                @if (temperatureDevices().length > 0) {
+                  @for (dev of temperatureDevices(); track dev.id) {
+                    <th class="sensor-col" [title]="dev.entity_id">
+                      {{ dev.name | uppercase }}
+                    </th>
+                  }
+                } @else {
+                  <th class="sensor-col">TARGET TEMPERATURES</th>
+                }
+                <th class="actions-col">ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (map of heatingMaps(); track map.id) {
+                <tr [class.is-active-row]="map.id === activeMapId()" [class.is-default-row]="map.is_default === 1">
+                  <!-- Heating Map -->
+                  <td class="map-name-cell">
+                    <div class="map-cell-content">
+                      <span class="map-dot-indicator" [style.background-color]="getMapColor(map.id)"></span>
+                      <div class="map-text">
+                        <span class="name-bold">{{ map.name }}</span>
+                        @if (map.description) {
+                          <span class="map-desc-text">{{ map.description }}</span>
+                        }
+                      </div>
+                    </div>
+                  </td>
+
+                  <!-- Status -->
+                  <td class="status-cell">
+                    <div class="status-badges-group">
+                      @if (map.id === activeMapId()) {
+                        <span class="badge badge-active" title="Currently running active heating map">
+                          🟢 Active
+                        </span>
+                      }
+                      @if (map.is_default === 1) {
+                        <span class="badge badge-warning" title="Default fallback heating map">
+                          ⭐ Default
+                        </span>
+                      }
+                      @if (map.id !== activeMapId() && map.is_default !== 1) {
+                        <span class="badge badge-inactive">Inactive</span>
+                      }
+                    </div>
+                  </td>
+
+                  <!-- Target Sensor Temperatures -->
+                  @if (temperatureDevices().length > 0) {
+                    @for (dev of temperatureDevices(); track dev.id) {
+                      <td class="sensor-temp-cell">
+                        @if (getDeviceRule(map, dev.id) !== null) {
+                          <span class="temp-badge">
+                            {{ formatTemp(getDeviceRule(map, dev.id)) }} °C
+                          </span>
+                        } @else {
+                          <span class="ignored-badge">—</span>
+                        }
+                      </td>
+                    }
+                  } @else {
+                    <td class="sensor-temp-cell">
+                      <span class="no-devices-hint">No temperature sensors configured</span>
+                    </td>
+                  }
+
+                  <!-- Actions -->
+                  <td class="actions-cell">
+                    <div class="actions-group">
+                      @if (map.is_default !== 1) {
+                        <button class="btn btn-sm btn-secondary" (click)="setDefaultMap(map)" title="Set as default map">
+                          Set Default
+                        </button>
+                      }
+
+                      <button class="btn btn-sm btn-secondary" (click)="openEditMapModal(map)" title="Edit heating map">
+                        Edit
+                      </button>
+
+                      <button
+                        class="btn btn-sm btn-danger-outline"
+                        (click)="deleteMap(map)"
+                        title="Delete heating map"
+                        [disabled]="heatingMaps().length <= 1"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Mobile Cards List (Visible on mobile screens <= 768px) -->
+        <div class="maps-mobile-cards-list">
+          @for (map of heatingMaps(); track map.id) {
+            <div class="maps-mobile-card" [class.is-active-map]="map.id === activeMapId()" [class.is-default-map]="map.is_default === 1">
+              <div class="m-card-top">
+                <div class="m-map-title">
+                  <span class="map-dot-indicator" [style.background-color]="getMapColor(map.id)"></span>
+                  <div>
+                    <span class="m-map-name">{{ map.name }}</span>
+                    @if (map.description) {
+                      <p class="m-map-desc">{{ map.description }}</p>
+                    }
+                  </div>
+                </div>
+
+                <div class="m-badges">
+                  @if (map.id === activeMapId()) {
+                    <span class="badge badge-active">🟢 Active</span>
+                  }
+                  @if (map.is_default === 1) {
+                    <span class="badge badge-warning">⭐ Default</span>
+                  }
+                </div>
+              </div>
+
+              <!-- Sensor Rules in Mobile Card -->
+              <div class="m-sensors-section">
+                <span class="m-section-label">Target Temperatures</span>
+                @if (temperatureDevices().length > 0) {
+                  <div class="m-sensors-grid">
+                    @for (dev of temperatureDevices(); track dev.id) {
+                      <div class="m-sensor-item">
+                        <span class="m-sensor-name">{{ dev.name }}</span>
+                        @if (getDeviceRule(map, dev.id) !== null) {
+                          <span class="temp-badge">{{ formatTemp(getDeviceRule(map, dev.id)) }} °C</span>
+                        } @else {
+                          <span class="ignored-badge">—</span>
+                        }
+                      </div>
+                    }
+                  </div>
+                } @else {
+                  <span class="no-devices-hint">No temperature sensors configured</span>
+                }
+              </div>
+
+              <!-- Actions Row in Mobile Card -->
+              <div class="m-actions-row">
+                @if (map.is_default !== 1) {
+                  <button class="btn btn-sm btn-secondary" (click)="setDefaultMap(map)" title="Set as default map">
+                    Set Default
+                  </button>
+                }
+                <button class="btn btn-sm btn-secondary" (click)="openEditMapModal(map)" title="Edit heating map">
+                  Edit
+                </button>
+                <button
+                  class="btn btn-sm btn-danger-outline"
+                  (click)="deleteMap(map)"
+                  title="Delete heating map"
+                  [disabled]="heatingMaps().length <= 1"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- MODAL: CREATE / EDIT HEATING MAP -->
+<!-- ========================================================================= -->
+@if (isMapModalOpen()) {
+  <div class="modal-backdrop" (click)="closeMapModal()">
+    <div class="modal-content modal-lg" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-with-icon">
+          <div class="header-icon-box heating-icon-box">
+            <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2c0 4.5-5 7-5 12a5 5 0 0 0 10 0c0-5-5-7.5-5-12z" />
+            </svg>
+          </div>
+          <div>
+            <h3>{{ mapModalMode() === 'create' ? 'Create Heating Map' : 'Edit Heating Map' }}</h3>
+            <p class="modal-subtitle">Define target minimum temperature rules for each temperature device</p>
+          </div>
+        </div>
+        <button class="modal-close" (click)="closeMapModal()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="mapName">Map Name *</label>
+            <input
+              id="mapName"
+              type="text"
+              class="form-input"
+              [(ngModel)]="formMapName"
+              placeholder="e.g. Comfort, Eco, Night, Away"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="mapDesc">Description (Optional)</label>
+            <input
+              id="mapDesc"
+              type="text"
+              class="form-input"
+              [(ngModel)]="formMapDescription"
+              placeholder="Brief description of this temperature map"
+            />
+          </div>
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" [checked]="formMapIsDefault === 1" (change)="formMapIsDefault = $any($event.target).checked ? 1 : 0" />
+            <span>Set as Default Heating Map</span>
+          </label>
+        </div>
+
+        <div class="rules-config-section">
+          <div class="rules-section-title">
+            <h4>Temperature Device Rules</h4>
+            <p class="rules-section-hint">
+              Define the minimum temperature for each device. If a device has no minimum temperature defined or is disabled, the system will ignore it in this map.
+            </p>
+          </div>
+
+          @if (temperatureDevices().length === 0) {
+            <div class="empty-state p-3">
+              <p>No temperature devices configured. You can configure temperature sensors in Settings.</p>
+              <a routerLink="/settings" class="btn btn-secondary btn-sm" (click)="closeMapModal()">Go to Settings</a>
+            </div>
+          } @else {
+            <div class="device-rules-table">
+              @for (dev of temperatureDevices(); track dev.id) {
+                <div class="device-rule-row">
+                  <div class="device-meta">
+                    <span class="device-row-name">{{ dev.name }}</span>
+                    <span class="device-row-entity">{{ dev.entity_id }}</span>
+                  </div>
+
+                  <div class="device-controls">
+                    <label class="checkbox-inline">
+                      <input
+                        type="checkbox"
+                        [checked]="formDeviceRules[dev.id]?.enabled"
+                        (change)="formDeviceRules[dev.id].enabled = $any($event.target).checked"
+                      />
+                      <span>Apply Min Temp</span>
+                    </label>
+
+                    @if (formDeviceRules[dev.id]?.enabled) {
+                      <div class="temp-input-wrapper">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="10"
+                          max="35"
+                          class="form-input temp-number-input"
+                          [(ngModel)]="formDeviceRules[dev.id].min_temperature"
+                          placeholder="21.0"
+                        />
+                        <span class="unit-text">°C</span>
+                      </div>
+                    } @else {
+                      <span class="rule-ignored-text">Ignored</span>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" (click)="closeMapModal()">
+          Cancel
+        </button>
+        <button type="button" class="btn btn-primary" (click)="saveHeatingMap()">
+          {{ mapModalMode() === 'create' ? 'Create Map (Enter)' : 'Save Changes (Enter)' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ========================================================================= -->
+<!-- MODAL: CREATE / EDIT SCHEDULE -->
+<!-- ========================================================================= -->
+@if (isScheduleModalOpen()) {
+  <div class="modal-backdrop" (click)="closeScheduleModal()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-with-icon">
+          <div class="header-icon-box">
+            <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+          </div>
+          <div>
+            <h3>{{ scheduleModalMode() === 'create' ? 'Create Heating Schedule' : 'Edit Heating Schedule' }}</h3>
+            <p class="modal-subtitle">Automatically activate a specific heating map on schedule</p>
+          </div>
+        </div>
+        <button class="modal-close" (click)="closeScheduleModal()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="schedMap">Target Heating Map *</label>
+          <select
+            id="schedMap"
+            class="form-input"
+            [(ngModel)]="formScheduleTargetMapId"
+            (ngModelChange)="onScheduleTargetMapChange()"
+          >
+            @for (m of heatingMaps(); track m.id) {
+              <option [value]="m.id">
+                {{ m.name }} {{ m.is_default === 1 ? '(Default)' : '' }}
+              </option>
+            }
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="schedName">Schedule Name *</label>
+          <input
+            id="schedName"
+            type="text"
+            class="form-input"
+            [(ngModel)]="formScheduleName"
+            placeholder="e.g. Auto - Heating Map - Comfort"
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="schedType">Schedule Type *</label>
+          <select id="schedType" class="form-input" [(ngModel)]="formScheduleType">
+            <option value="recurrent">Recurrent (Cron Pattern)</option>
+            <option value="one-time">One-time (Specific Datetime)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="schedTrigger">Trigger Spec *</label>
+          <input
+            id="schedTrigger"
+            type="text"
+            class="form-input"
+            [(ngModel)]="formScheduleTrigger"
+            placeholder="e.g. 0 7 * * * for 7:00 AM daily"
+          />
+          <span class="form-hint">
+            {{ formScheduleType === 'recurrent' ? 'Cron format: minute hour day month weekday (e.g. 0 7 * * *)' : 'ISO format: YYYY-MM-DDTHH:MM:SS' }}
+          </span>
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" [checked]="formScheduleNotify === 1" (change)="formScheduleNotify = $any($event.target).checked ? 1 : 0" />
+            <span>Notify on Execution</span>
+          </label>
+        </div>
+
+        @if (formScheduleNotify === 1) {
+          <div class="form-group">
+            <label class="form-label">Notification Message Override (Optional)</label>
+            <input
+              type="text"
+              class="form-input"
+              [(ngModel)]="formScheduleNotificationMessage"
+              placeholder="e.g. Heating map switched to Comfort."
+            />
+          </div>
+        }
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" (click)="closeScheduleModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" (click)="saveSchedule()">
+          {{ scheduleModalMode() === 'create' ? 'Create Schedule (Enter)' : 'Save Changes (Enter)' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ========================================================================= -->
+<!-- MODAL: CREATE / EDIT EVENT DEFINITION -->
+<!-- ========================================================================= -->
+@if (isEventModalOpen()) {
+  <div class="modal-backdrop" (click)="closeEventModal()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-with-icon">
+          <div class="header-icon-box">
+            <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+          </div>
+          <div>
+            <h3>{{ eventModalMode() === 'create' ? 'Create Heating Event' : 'Edit Heating Event' }}</h3>
+            <p class="modal-subtitle">Automatically activate a heating map when an event triggers</p>
+          </div>
+        </div>
+        <button class="modal-close" (click)="closeEventModal()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="evTargetMap">Target Heating Map *</label>
+          <select
+            id="evTargetMap"
+            class="form-input"
+            [(ngModel)]="formEventTargetMapId"
+            (ngModelChange)="onEventTargetMapChange()"
+          >
+            @for (m of heatingMaps(); track m.id) {
+              <option [value]="m.id">{{ m.name }} {{ m.is_default === 1 ? '(Default)' : '' }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="evName">Event Definition Name *</label>
+          <input
+            id="evName"
+            type="text"
+            class="form-input"
+            [(ngModel)]="formEventName"
+            placeholder="e.g. Auto - Heating Map - Comfort on Presence"
+          />
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="evType">Event Type *</label>
+            <input
+              id="evType"
+              type="text"
+              class="form-input"
+              [(ngModel)]="formEventType"
+              placeholder="e.g. presence, sunrise, sunset"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="evParam">Parameter</label>
+            <input
+              id="evParam"
+              type="text"
+              class="form-input"
+              [(ngModel)]="formEventParameter"
+              placeholder="e.g. home, away, or blank"
+            />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="evHoliday">Holiday Filter</label>
+          <select id="evHoliday" class="form-input" [(ngModel)]="formEventHoliday">
+            <option value="all_days">All Days</option>
+            <option value="not_holiday">Only Workdays (Not Holiday)</option>
+            <option value="holiday">Only Holidays & Weekends</option>
+          </select>
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" [checked]="formEventNotify === 1" (change)="formEventNotify = $any($event.target).checked ? 1 : 0" />
+            <span>Notify on Execution</span>
+          </label>
+        </div>
+
+        @if (formEventNotify === 1) {
+          <div class="form-group">
+            <label class="form-label">Notification Message Override (Optional)</label>
+            <input
+              type="text"
+              class="form-input"
+              [(ngModel)]="formEventNotificationMessage"
+              placeholder="e.g. Event triggered heating map change."
+            />
+          </div>
+        }
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" (click)="closeEventModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" (click)="saveEventDefinition()">
+          {{ eventModalMode() === 'create' ? 'Create Event (Enter)' : 'Save Changes (Enter)' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ========================================================================= -->
+<!-- MODAL: DEACTIVATE UNTIL -->
+<!-- ========================================================================= -->
+@if (isDeactivateModalOpen()) {
+  <div class="modal-backdrop" (click)="closeDeactivateModal()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-with-icon">
+          <div class="header-icon-box header-icon-warning">
+            <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+          </div>
+          <div>
+            <h3>Deactivate Heating Until...</h3>
+            <p class="modal-subtitle">Turn off heating now and automatically reactivate at a specified time</p>
+          </div>
+        </div>
+        <button class="modal-close" (click)="closeDeactivateModal()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-mode-tabs">
+          <button
+            type="button"
+            class="tab-btn"
+            [class.active]="deactivateMode() === 'hours'"
+            (click)="deactivateMode.set('hours')"
+          >
+            ⏱️ Deactivate for X Hours
+          </button>
+          <button
+            type="button"
+            class="tab-btn"
+            [class.active]="deactivateMode() === 'until'"
+            (click)="deactivateMode.set('until')"
+          >
+            📅 Deactivate Until Specific Time
+          </button>
+        </div>
+
+        @if (deactivateMode() === 'hours') {
+          <div class="form-group">
+            <label class="form-label">Select Duration</label>
+            <div class="presets-row">
+              @for (preset of presetHours; track preset) {
+                <button
+                  type="button"
+                  class="preset-pill"
+                  [class.preset-active]="deactivateHours() === preset"
+                  (click)="selectPresetHours(preset)"
+                >
+                  {{ preset }}h
+                </button>
+              }
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="customHours" class="form-label">Or Custom Number of Hours</label>
+            <input
+              id="customHours"
+              type="number"
+              step="0.5"
+              min="0.5"
+              max="720"
+              class="form-input"
+              [ngModel]="deactivateHours()"
+              (ngModelChange)="deactivateHours.set($event)"
+              placeholder="e.g. 3.5"
+            />
+          </div>
+        } @else {
+          <div class="form-group">
+            <label for="deactivateUntilDate" class="form-label">Target Reactivation Date & Time</label>
+            <input
+              id="deactivateUntilDate"
+              type="datetime-local"
+              class="form-input"
+              [ngModel]="deactivateUntilInput()"
+              (ngModelChange)="deactivateUntilInput.set($event)"
+            />
+          </div>
+        }
+
+        <div class="preview-box">
+          <div class="preview-label">SCHEDULE PREVIEW</div>
+          <div class="preview-text">{{ resumePreviewText() }}</div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        @if (deactivatedUntil()) {
+          <button
+            type="button"
+            class="btn btn-danger-outline"
+            (click)="cancelDeferredStart()"
+            [disabled]="isSubmitting() || loading()"
+            style="margin-right: auto;"
+            title="Cancel deferred restart and keep heating off"
+          >
+            Cancel Deferred Start
+          </button>
+        }
+        <button type="button" class="btn btn-secondary" (click)="closeDeactivateModal()" [disabled]="isSubmitting()">
+          Close
+        </button>
+        <button type="button" class="btn btn-warning" (click)="submitDeactivateUntil()" [disabled]="isSubmitting()">
+          @if (isSubmitting()) { Scheduling... } @else { Confirm Deactivation & Schedule Resume (Enter) }
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ========================================================================= -->
+<!-- MODAL: CONFIGURE DAY PARTS (HEATING CALENDAR) -->
+<!-- ========================================================================= -->
+@if (isDayModalOpen() && editingDay()) {
+  <div class="modal-backdrop" (click)="closeDayModal()">
+    <div class="modal-content modal-lg" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-with-icon">
+          <div class="header-icon-box calendar-icon-box">
+            <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+          </div>
+          <div>
+            <h3>Configure {{ editingDay()?.name }} Parts of the Day</h3>
+            <p class="modal-subtitle">Define time ranges and assign a heating map for each part of the day</p>
+          </div>
+        </div>
+        <button class="modal-close" (click)="closeDayModal()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Quick Presets Bar -->
+        <div class="quick-presets-bar">
+          <span class="presets-label">Quick Presets:</span>
+          <button type="button" class="btn btn-sm btn-secondary" (click)="applyDayPreset('all_day')">All Day (24h)</button>
+          <button type="button" class="btn btn-sm btn-secondary" (click)="applyDayPreset('day_night')">Day / Night</button>
+          <button type="button" class="btn btn-sm btn-secondary" (click)="applyDayPreset('work_schedule')">Workday Routine</button>
+        </div>
+
+        <!-- Time Slots Rows -->
+        <div class="day-slots-list">
+          @for (slot of editingDaySlots; track $index; let idx = $index) {
+            <div class="day-slot-row">
+              <span class="slot-idx-badge">Part #{{ idx + 1 }}</span>
+              <div class="slot-time-group">
+                <label class="slot-label">From</label>
+                <input type="time" class="form-input time-input" [(ngModel)]="slot.start_time" />
+              </div>
+              <div class="slot-time-group">
+                <label class="slot-label">To</label>
+                <input type="time" class="form-input time-input" [(ngModel)]="slot.end_time" />
+              </div>
+              <div class="slot-map-group">
+                <label class="slot-label" [for]="'slot-map-' + idx">Heating Map</label>
+                <div class="select-wrapper">
+                  <div
+                    class="select-color-indicator"
+                    [style.background-color]="getMapColor(slot.map_id)"
+                  ></div>
+                  <select
+                    [id]="'slot-map-' + idx"
+                    class="form-select custom-map-select"
+                    [ngModel]="slot.map_id"
+                    (ngModelChange)="slot.map_id = +$event"
+                  >
+                    @for (map of heatingMaps(); track map.id) {
+                      <option [value]="map.id">
+                        {{ map.name }} {{ map.is_default ? '(Default)' : '' }}
+                      </option>
+                    }
+                  </select>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="btn-remove-slot"
+                [disabled]="editingDaySlots.length <= 1"
+                (click)="removeSlotFromDay(idx)"
+                title="Remove this slot"
+              >
+                &times;
+              </button>
+            </div>
+          }
+        </div>
+
+        <div class="add-slot-row">
+          <button type="button" class="btn btn-sm btn-secondary" (click)="addSlotToDay()">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add Another Part of Day
+          </button>
+        </div>
+
+        <!-- Replicate to other days section -->
+        <div class="replicate-section">
+          <div class="replicate-header">
+            <span class="replicate-title">Replicate this schedule to other days:</span>
+            <div class="replicate-shortcuts">
+              <button type="button" class="btn-link-action" (click)="setCopyPreset('weekdays')">Mon–Fri</button>
+              <button type="button" class="btn-link-action" (click)="setCopyPreset('weekend')">Weekend</button>
+              <button type="button" class="btn-link-action" (click)="setCopyPreset('all')">All Days</button>
+              <button type="button" class="btn-link-action" (click)="setCopyPreset('none')">Clear</button>
+            </div>
+          </div>
+          <div class="replicate-checkboxes-grid">
+            @for (d of calendarDays(); track d.id) {
+              @if (d.id !== editingDay()?.id) {
+                <label class="replicate-checkbox-label">
+                  <input type="checkbox" [(ngModel)]="editingDayCopyTargets[d.id]" />
+                  <span>{{ d.name }}</span>
+                </label>
+              }
+            }
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" (click)="closeDayModal()" [disabled]="isSavingDayCalendar()">
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary"
+          (click)="saveDaySchedule()"
+          [disabled]="isSavingDayCalendar()"
+        >
+          {{ isSavingDayCalendar() ? 'Saving...' : 'Save Schedule' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Action Confirmation Modal -->
+<app-confirm-modal
+  [isOpen]="isConfirmModalOpen()"
+  [title]="confirmModalTitle()"
+  [message]="confirmModalMessage()"
+  [confirmText]="'Confirm'"
+  [cancelText]="'Cancel'"
+  [confirmVariant]="'danger'"
+  [loading]="isConfirming()"
+  (confirmed)="handleConfirmModal()"
+  (cancelled)="closeConfirmModal()"
+/>

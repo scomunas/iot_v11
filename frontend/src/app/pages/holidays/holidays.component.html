@@ -1,0 +1,394 @@
+<div class="holidays-page">
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="header-titles">
+      <div class="title-with-icon">
+        <div class="header-icon-box">
+          <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="page-title">Holidays</h1>
+          <p class="page-subtitle">Configure days of the year that are holidays for home automation logic</p>
+        </div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="loadHolidays()" [disabled]="loading() || syncing()" title="Refresh holidays">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        Refresh
+      </button>
+      <button class="btn btn-secondary" (click)="openSyncModal()" [disabled]="syncing() || loading()" title="Fetch year holidays from Nager.Date API">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+        {{ syncing() ? 'Syncing...' : 'Sync Public Holidays' }}
+      </button>
+      <button class="btn btn-primary" (click)="openAddModal()" title="Add holiday date">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        New Holiday
+      </button>
+    </div>
+  </header>
+
+  <!-- Alerts -->
+  @if (successMessage()) {
+    <div class="alert alert-success">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      <span>{{ successMessage() }}</span>
+    </div>
+  }
+
+  @if (errorMessage()) {
+    <div class="alert alert-danger">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span>{{ errorMessage() }}</span>
+    </div>
+  }
+
+  <!-- Stats Grid -->
+  <div class="holidays-stats-bar">
+    <div class="stat-pill">
+      <span class="stat-number">{{ holidays().length }}</span>
+      <span class="stat-label">Total Holidays</span>
+    </div>
+    <div class="stat-pill">
+      <span class="stat-number upcoming">{{ upcomingCount() }}</span>
+      <span class="stat-label">Upcoming / Today</span>
+    </div>
+    <div class="stat-pill">
+      <span class="stat-number muted">{{ holidays().length - upcomingCount() }}</span>
+      <span class="stat-label">Passed</span>
+    </div>
+  </div>
+
+  <!-- Filters & Search Toolbar -->
+  <div class="toolbar">
+    <div class="search-box">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      <input
+        type="text"
+        placeholder="Search holidays by date (YYYY-MM-DD), name, or weekday..."
+        [ngModel]="searchQuery()"
+        (ngModelChange)="searchQuery.set($event)"
+      />
+      @if (searchQuery()) {
+        <button class="clear-search-btn" (click)="searchQuery.set('')">&times;</button>
+      }
+    </div>
+
+    <!-- Year Filter Tabs -->
+    <div class="year-tabs">
+      <button
+        class="tab-btn"
+        [class.active]="selectedYear() === 'all'"
+        (click)="selectedYear.set('all')"
+      >
+        All ({{ holidays().length }})
+      </button>
+      @for (yr of availableYears(); track yr) {
+        <button
+          class="tab-btn"
+          [class.active]="selectedYear() === yr"
+          (click)="selectedYear.set(yr)"
+        >
+          {{ yr }}
+        </button>
+      }
+    </div>
+  </div>
+
+  <!-- Holidays List / Table -->
+  <div class="table-card">
+    @if (loading() && holidays().length === 0) {
+      <div class="empty-state">
+        <p>Loading holidays...</p>
+      </div>
+    } @else if (filteredHolidays().length === 0) {
+      <div class="empty-state">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+        <h3>No holidays found</h3>
+        <p>
+          @if (searchQuery() || selectedYear() !== 'all') {
+            No holiday matches your filter criteria.
+          } @else {
+            No holidays have been configured yet. Add dates or use the <code>add_holiday</code> function.
+          }
+        </p>
+        <button class="btn btn-primary" (click)="openAddModal()">Add Holiday</button>
+      </div>
+    } @else {
+      <!-- Desktop Table -->
+      <table class="holidays-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Name / Description</th>
+            <th>Weekday</th>
+            <th>Status</th>
+            <th class="actions-col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (h of filteredHolidays(); track h.id) {
+            <tr [class.row-today]="isToday(h.date)">
+              <td class="date-cell">
+                <div class="date-wrap">
+                  <span class="date-display">{{ formatDateDisplay(h.date) }}</span>
+                  <code class="date-code">{{ h.date }}</code>
+                </div>
+              </td>
+              <td class="name-cell">
+                @if (h.name) {
+                  <span class="holiday-name">{{ h.name }}</span>
+                } @else {
+                  <span class="text-muted">Holiday</span>
+                }
+              </td>
+              <td class="weekday-cell">
+                <span class="weekday-text">{{ getDayName(h.date) }}</span>
+              </td>
+              <td class="status-cell">
+                @if (isToday(h.date)) {
+                  <span class="badge badge-today">Today</span>
+                } @else if (isUpcoming(h.date)) {
+                  <span class="badge badge-upcoming">Upcoming</span>
+                } @else {
+                  <span class="badge badge-passed">Passed</span>
+                }
+              </td>
+              <td class="actions-col">
+                <button
+                  class="icon-btn delete-btn"
+                  (click)="openDeleteModal(h)"
+                  title="Remove Holiday"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      <!-- Mobile Cards -->
+      <div class="mobile-cards">
+        @for (h of filteredHolidays(); track h.id) {
+          <div class="mobile-card" [class.today-card]="isToday(h.date)">
+            <div class="mc-header">
+              <div class="mc-title-group">
+                <div class="mc-date">{{ formatDateDisplay(h.date) }}</div>
+                <code class="mc-code">{{ h.date }}</code>
+              </div>
+              @if (isToday(h.date)) {
+                <span class="badge badge-today">Today</span>
+              } @else if (isUpcoming(h.date)) {
+                <span class="badge badge-upcoming">Upcoming</span>
+              } @else {
+                <span class="badge badge-passed">Passed</span>
+              }
+            </div>
+
+            <div class="mc-body">
+              <div class="mc-row">
+                <span class="mc-label">Name:</span>
+                <span class="mc-val">{{ h.name || 'Holiday' }}</span>
+              </div>
+              <div class="mc-row">
+                <span class="mc-label">Weekday:</span>
+                <span class="mc-val">{{ getDayName(h.date) }}</span>
+              </div>
+            </div>
+
+            <div class="mc-footer">
+              <button class="btn btn-secondary btn-sm danger-text" (click)="openDeleteModal(h)">
+                Remove Holiday
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- ADD HOLIDAY MODAL -->
+  @if (isAddModalOpen()) {
+    <div class="modal-backdrop" (click)="closeModals()">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h2 class="modal-title">Add Holiday</h2>
+          <button class="modal-close-btn" (click)="closeModals()">&times;</button>
+        </div>
+
+        <form (ngSubmit)="saveHoliday()">
+          <div class="modal-body">
+            @if (formError()) {
+              <div class="alert alert-danger modal-alert">
+                <span>{{ formError() }}</span>
+              </div>
+            }
+
+            <!-- Quick pick shortcuts -->
+            <div class="form-group">
+              <label class="form-label">Quick Pick</label>
+              <div class="quick-pick-row">
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  (click)="setQuickDate(0)"
+                >
+                  📅 Today
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  (click)="setQuickDate(1)"
+                >
+                  ⏭ Tomorrow
+                </button>
+              </div>
+            </div>
+
+            <!-- Date Input -->
+            <div class="form-group">
+              <label class="form-label" for="holiday-date">
+                Date <span class="required">*</span>
+              </label>
+              <input
+                id="holiday-date"
+                type="date"
+                class="form-control"
+                [ngModel]="newDate()"
+                (ngModelChange)="newDate.set($event)"
+                name="newDate"
+                required
+              />
+              <span class="form-hint">Selected weekday: <strong>{{ getDayName(newDate()) || '—' }}</strong></span>
+            </div>
+
+            <!-- Name / Description Input -->
+            <div class="form-group">
+              <label class="form-label" for="holiday-name">Name / Description</label>
+              <input
+                id="holiday-name"
+                type="text"
+                class="form-control"
+                placeholder="e.g. New Year's Day, Summer Vacation..."
+                [ngModel]="newName()"
+                (ngModelChange)="newName.set($event)"
+                name="newName"
+              />
+              <span class="form-hint">Optional descriptive name for this holiday</span>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" (click)="closeModals()" [disabled]="saving()">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              {{ saving() ? 'Saving...' : 'Add Holiday' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  }
+
+  <!-- CONFIRM DELETE MODAL -->
+  <app-confirm-modal
+    [isOpen]="isDeleteModalOpen() && !!holidayToDelete()"
+    title="Remove Holiday"
+    confirmText="Remove"
+    [loading]="deleting()"
+    (confirmed)="confirmDelete()"
+    (cancelled)="closeModals()"
+  >
+    @if (holidayToDelete(); as h) {
+      <p>
+        Are you sure you want to remove the holiday for
+        <strong>{{ formatDateDisplay(h.date) }}</strong> (<code>{{ h.date }}</code>)?
+      </p>
+      @if (h.name) {
+        <p class="text-muted">"{{ h.name }}"</p>
+      }
+    }
+  </app-confirm-modal>
+
+  <!-- CONFIRM SYNC HOLIDAYS MODAL -->
+  <app-confirm-modal
+    [isOpen]="isSyncModalOpen()"
+    title="Sync Public Holidays"
+    confirmText="Sync Holidays"
+    confirmVariant="primary"
+    [loading]="syncing()"
+    (confirmed)="confirmSync()"
+    (cancelled)="closeModals()"
+  >
+    <div class="sync-modal-body">
+      <p class="modal-desc">
+        Select which county / autonomous community in Spain to import official public holidays from Nager.Date API:
+      </p>
+
+      <div class="form-group">
+        <label class="form-label" for="sync-county">
+          County / Region <span class="required">*</span>
+        </label>
+        <select
+          id="sync-county"
+          class="form-control"
+          [ngModel]="syncCounty()"
+          (ngModelChange)="syncCounty.set($event)"
+        >
+          @for (c of spanishCounties; track c.code) {
+            <option [value]="c.code">{{ c.name }}</option>
+          }
+        </select>
+        <span class="form-hint">National public holidays are automatically included for all regions.</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="sync-year">Year</label>
+        <input
+          id="sync-year"
+          type="number"
+          class="form-control"
+          [ngModel]="syncYear()"
+          (ngModelChange)="syncYear.set($event)"
+          min="2020"
+          max="2050"
+        />
+        <span class="form-hint">Year to fetch holidays for (defaults to current year).</span>
+      </div>
+    </div>
+  </app-confirm-modal>
+</div>

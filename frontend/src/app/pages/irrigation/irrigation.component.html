@@ -1,0 +1,913 @@
+<div class="irrigation-page">
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="header-titles">
+      <div class="title-with-icon">
+        <div class="header-icon-box">
+          <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="page-title">Irrigation</h1>
+          <p class="page-subtitle">Manage automated recurring watering routines and event-driven irrigation</p>
+        </div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="loadData()" [disabled]="loading()">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        Refresh
+      </button>
+      <button class="btn btn-primary" (click)="openCreateDeviceModal()">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        New Irrigation Device
+      </button>
+    </div>
+  </header>
+
+  <!-- Alerts -->
+  @if (successMessage()) {
+    <div class="alert alert-success">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      <span>{{ successMessage() }}</span>
+    </div>
+  }
+
+  @if (errorMessage()) {
+    <div class="alert alert-danger">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span>{{ errorMessage() }}</span>
+    </div>
+  }
+
+  <!-- VIEW 1: Main Device Cards Overview (when no device is active) -->
+  @if (!activeDevice()) {
+    @if (loading() && irrigationDevices().length === 0) {
+      <div class="state-card loading-state">
+        <p>Loading irrigation devices...</p>
+      </div>
+    } @else if (irrigationDevices().length === 0) {
+      <div class="state-card empty-state">
+        <div class="empty-icon-circle">
+          <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+          </svg>
+        </div>
+        <h3>No irrigation devices configured</h3>
+        <p>Add your first irrigation valve or sprinkler to set up automated schedules and event triggers.</p>
+        <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: center; flex-wrap: wrap;">
+          <button class="btn btn-primary" (click)="openCreateDeviceModal()">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Configure Irrigation Device
+          </button>
+          <a routerLink="/settings" class="btn btn-secondary">
+            Manage in Settings &rarr;
+          </a>
+        </div>
+      </div>
+    } @else {
+      <div class="cards-grid">
+        @for (device of irrigationDevices(); track device.id) {
+          @let devSchedules = getSchedulesForDevice(device);
+          @let devEvents = getEventsForDevice(device);
+          <div class="device-card" (click)="openDeviceDetail(device)">
+            <!-- Card Header -->
+            <div class="card-header">
+              <div class="device-title-row">
+                <div class="device-icon-box">💧</div>
+                <div class="device-names">
+                  <h3 class="device-title">{{ device.name }}</h3>
+                  <code class="device-entity">{{ device.entity_id }}</code>
+                </div>
+              </div>
+              <div class="device-actions" (click)="$event.stopPropagation()">
+                <button
+                  class="icon-action-btn edit"
+                  (click)="openEditDeviceModal(device)"
+                  title="Edit Device Settings"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+                <button
+                  class="icon-action-btn delete"
+                  (click)="deleteDevice(device)"
+                  title="Delete Device"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Card Body: Summary of Schedules & Events -->
+            <div class="card-summary">
+              <!-- Schedules Summary Block -->
+              <div class="summary-section schedules-summary">
+                <div class="summary-section-header">
+                  <div class="section-title-wrap">
+                    <span class="summary-icon">🕒</span>
+                    <span class="summary-title">Schedules</span>
+                  </div>
+                  <span class="summary-count-badge" [class.has-items]="devSchedules.length > 0">
+                    {{ devSchedules.length }} configured
+                  </span>
+                </div>
+                @if (devSchedules.length === 0) {
+                  <p class="summary-empty">No recurring schedules configured</p>
+                } @else {
+                  <div class="summary-items-list">
+                    @for (sch of devSchedules; track sch.id) {
+                      <div class="summary-item-pill" [class.paused]="sch.is_active === 0">
+                        <span class="status-indicator"></span>
+                        <span class="item-freq">{{ getReadableFrequency(sch.trigger_spec) }}</span>
+                        <span class="item-dur">{{ getDurationDisplay(sch) }}</span>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+
+              <!-- Events Summary Block -->
+              <div class="summary-section events-summary">
+                <div class="summary-section-header">
+                  <div class="section-title-wrap">
+                    <span class="summary-icon">⚡</span>
+                    <span class="summary-title">Events</span>
+                  </div>
+                  <span class="summary-count-badge" [class.has-items]="devEvents.length > 0">
+                    {{ devEvents.length }} configured
+                  </span>
+                </div>
+                @if (devEvents.length === 0) {
+                  <p class="summary-empty">No event triggers configured</p>
+                } @else {
+                  <div class="summary-items-list">
+                    @for (ev of devEvents; track ev.id) {
+                      <div class="summary-item-pill" [class.paused]="ev.is_active === 0">
+                        <span class="status-indicator"></span>
+                        <span class="item-event-type">
+                          {{ ev.type === 'sunrise' ? '🌅 Sunrise' : (ev.type === 'sunset' ? '🌇 Sunset' : ev.type) }}
+                        </span>
+                        @if (ev.parameter) {
+                          <span class="item-param">({{ ev.parameter }})</span>
+                        }
+                        <span
+                          class="item-holiday"
+                          [class.badge-holiday]="ev.holiday === 'holiday'"
+                          [class.badge-workdays]="ev.holiday === 'not_holiday'"
+                          [class.badge-alldays]="!ev.holiday || ev.holiday === 'all_days'"
+                        >
+                          {{ getHolidayLabel(ev.holiday) }}
+                        </span>
+                        <span class="item-dur">{{ getDurationDisplay(ev) }}</span>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- Card Footer -->
+            <div class="card-footer" (click)="$event.stopPropagation()">
+              <button class="btn btn-outline-manage" (click)="openDeviceDetail(device)">
+                <span>Manage Schedules & Events</span>
+                <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  }
+
+  <!-- VIEW 2: Device Detail with the 2 Tables (Schedules & Events) -->
+  @if (activeDevice(); as currentDevice) {
+    <div class="device-detail-view">
+      <!-- Breadcrumb Bar -->
+      <div class="detail-top-bar">
+        <button class="btn-back" (click)="closeDeviceDetail()">
+          <svg class="back-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          Back to All Irrigation Devices
+        </button>
+
+        <div class="active-device-banner">
+          <div class="banner-left">
+            <div class="banner-icon">💧</div>
+            <div>
+              <div class="banner-title-group">
+                <h2 class="banner-title">{{ currentDevice.name }}</h2>
+                <span class="banner-badge">Zone #{{ currentDevice.id }}</span>
+              </div>
+              <code class="banner-entity">{{ currentDevice.entity_id }}</code>
+            </div>
+          </div>
+          <div class="banner-actions">
+            <button class="btn btn-secondary btn-sm" (click)="openEditDeviceModal(currentDevice)">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              Edit Device
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Two Tables Container -->
+      <div class="tables-split-layout">
+        <!-- TABLE 1: Schedules (Auto - Irrigation) -->
+        <div class="section-card schedules-card">
+          <div class="section-card-header">
+            <div class="card-title-group">
+              <span class="section-badge-icon">🕒</span>
+              <h2 class="section-card-title">Schedules</h2>
+              <span class="badge-count">{{ activeDeviceSchedules().length }}</span>
+            </div>
+            <button class="btn btn-primary" (click)="openCreateModal(currentDevice)">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              New Schedule
+            </button>
+          </div>
+
+          @if (activeDeviceSchedules().length === 0) {
+            <div class="table-empty-state">
+              <span class="empty-icon-sm">🕒</span>
+              <p class="empty-main">No schedules configured for this device</p>
+              <p class="empty-sub">Define recurring frequency and duration to automate watering.</p>
+              <button class="btn btn-secondary btn-sm" (click)="openCreateModal(currentDevice)">
+                + Add Schedule
+              </button>
+            </div>
+          } @else {
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Frequency</th>
+                    <th>Duration</th>
+                    <th>Notify</th>
+                    <th>Next Run</th>
+                    <th>Status</th>
+                    <th class="actions-col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (sch of activeDeviceSchedules(); track sch.id) {
+                    <tr [class.row-paused]="sch.is_active === 0">
+                      <td class="freq-cell">
+                        <span class="freq-text">{{ getReadableFrequency(sch.trigger_spec) }}</span>
+                        <code class="cron-code">{{ sch.trigger_spec }}</code>
+                      </td>
+                      <td class="duration-cell">
+                        <span class="duration-badge">{{ getDurationDisplay(sch) }}</span>
+                      </td>
+                      <td class="notify-cell">
+                        @if (sch.notify) {
+                          <span class="badge badge-notify" [title]="sch.notification_message || 'Standard notification'">🔔 Yes</span>
+                        } @else {
+                          <span class="text-muted">—</span>
+                        }
+                      </td>
+                      <td class="next-run-cell">
+                        @if (getNextRunTime(sch.id)) {
+                          <span class="next-run-badge">{{ getNextRunTime(sch.id) | date:'dd-MM HH:mm' }}</span>
+                        } @else {
+                          <span class="text-muted">—</span>
+                        }
+                      </td>
+                      <td class="status-cell">
+                        <label class="switch-control" [title]="sch.is_active === 1 ? 'Click to pause' : 'Click to activate'">
+                          <input
+                            type="checkbox"
+                            [checked]="sch.is_active === 1"
+                            (change)="toggleScheduleActive(sch)"
+                          />
+                          <span class="slider"></span>
+                        </label>
+                      </td>
+                      <td class="actions-col">
+                        <button class="icon-btn edit-btn" (click)="openEditModal(sch)" title="Edit Schedule">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                        <button class="icon-btn delete-btn" (click)="deleteSchedule(sch)" title="Delete Schedule">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+
+        <!-- TABLE 2: Events -->
+        <div class="section-card events-card">
+          <div class="section-card-header">
+            <div class="card-title-group">
+              <span class="section-badge-icon">⚡</span>
+              <h2 class="section-card-title">Events</h2>
+              <span class="badge-count">{{ activeDeviceEvents().length }}</span>
+            </div>
+            <button class="btn btn-primary" (click)="openCreateEventModal(currentDevice)">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              New Event
+            </button>
+          </div>
+
+          @if (activeDeviceEvents().length === 0) {
+            <div class="table-empty-state">
+              <span class="empty-icon-sm">⚡</span>
+              <p class="empty-main">No event triggers configured for this device</p>
+              <p class="empty-sub">Trigger watering automatically at sunrise, sunset, or on external events.</p>
+              <button class="btn btn-secondary btn-sm" (click)="openCreateEventModal(currentDevice)">
+                + Add Event
+              </button>
+            </div>
+          } @else {
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Event Trigger</th>
+                    <th>Parameter</th>
+                    <th>Duration</th>
+                    <th>Holiday</th>
+                    <th>Notify</th>
+                    <th>Status</th>
+                    <th class="actions-col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (ev of activeDeviceEvents(); track ev.id) {
+                    <tr [class.row-paused]="ev.is_active === 0">
+                      <td class="event-type-cell">
+                        <span class="event-pill" [class.sunrise]="ev.type === 'sunrise'" [class.sunset]="ev.type === 'sunset'">
+                          {{ ev.type === 'sunrise' ? '🌅 Sunrise' : (ev.type === 'sunset' ? '🌇 Sunset' : ev.type) }}
+                        </span>
+                      </td>
+                      <td class="param-cell">
+                        @if (ev.parameter) {
+                          <span class="param-badge">{{ ev.parameter }}</span>
+                        } @else {
+                          <span class="text-muted">—</span>
+                        }
+                      </td>
+                      <td class="duration-cell">
+                        <span class="duration-badge">{{ getDurationDisplay(ev) }}</span>
+                      </td>
+                      <td class="holiday-cell">
+                        <span class="badge" [class.badge-holiday]="ev.holiday === 'holiday'" [class.badge-workdays]="ev.holiday === 'not_holiday'" [class.badge-alldays]="!ev.holiday || ev.holiday === 'all_days'">
+                          {{ getHolidayLabel(ev.holiday) }}
+                        </span>
+                      </td>
+                      <td class="notify-cell">
+                        @if (ev.notify) {
+                          <span class="badge badge-notify" [title]="ev.notification_message || 'Standard notification'">🔔 Yes</span>
+                        } @else {
+                          <span class="text-muted">—</span>
+                        }
+                      </td>
+                      <td class="status-cell">
+                        <label class="switch-control" [title]="ev.is_active === 1 ? 'Click to pause' : 'Click to activate'">
+                          <input
+                            type="checkbox"
+                            [checked]="ev.is_active === 1"
+                            (change)="toggleEventActive(ev)"
+                          />
+                          <span class="slider"></span>
+                        </label>
+                      </td>
+                      <td class="actions-col">
+                        <button class="icon-btn edit-btn" (click)="openEditEventModal(ev)" title="Edit Event Trigger">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                        <button class="icon-btn delete-btn" (click)="deleteEvent(ev)" title="Delete Event Trigger">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- MODAL 1: Schedule Create / Edit (Recurrency & Duration) -->
+  @if (isScheduleModalOpen()) {
+    <div class="modal-backdrop" (click)="closeScheduleModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">
+              {{ scheduleModalMode() === 'create' ? 'New Irrigation Schedule' : 'Modify Schedule #' + selectedScheduleId() }}
+            </h2>
+            <p class="modal-subtitle">
+              Configure recurrency and watering duration for <strong>{{ activeDevice()?.name }}</strong>
+            </p>
+          </div>
+          <button class="btn-close" (click)="closeScheduleModal()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Auto-Configured Info Box -->
+          <div class="info-banner">
+            <div class="banner-item">
+              <span class="info-label">Name:</span>
+              <span class="info-val"><code>Auto - Irrigation - {{ activeDevice()?.name }}</code></span>
+            </div>
+            <div class="banner-item">
+              <span class="info-label">Type:</span>
+              <span class="info-val"><code>recurrent</code></span>
+            </div>
+            <div class="banner-item">
+              <span class="info-label">Device:</span>
+              <span class="info-val"><strong>{{ activeDevice()?.name }}</strong></span>
+            </div>
+            <div class="banner-item">
+              <span class="info-label">Use Case:</span>
+              <span class="info-val code-use-case">{{ irrigationUseCase()?.name || 'start_irrigation' }}</span>
+            </div>
+          </div>
+
+          <!-- Recurrency Section -->
+          <div class="form-section-title">1. Recurrency (Frequency)</div>
+          <div class="frequency-mode-tabs">
+            <button
+              type="button"
+              class="tab-btn"
+              [class.active]="formFrequencyMode === 'preset'"
+              (click)="formFrequencyMode = 'preset'; onFrequencyChange()"
+            >
+              Frequency Presets
+            </button>
+            <button
+              type="button"
+              class="tab-btn"
+              [class.active]="formFrequencyMode === 'custom'"
+              (click)="formFrequencyMode = 'custom'"
+            >
+              Custom Cron
+            </button>
+          </div>
+
+          @if (formFrequencyMode === 'preset') {
+            <div class="form-group">
+              <label class="form-label">Frequency</label>
+              <div class="preset-options-grid">
+                <label class="preset-card" [class.selected]="formFrequencyPreset === 'daily'">
+                  <input
+                    type="radio"
+                    name="freqPreset"
+                    value="daily"
+                    [(ngModel)]="formFrequencyPreset"
+                    (change)="onFrequencyChange()"
+                  />
+                  <span class="p-title">Daily</span>
+                  <span class="p-sub">Every day</span>
+                </label>
+                <label class="preset-card" [class.selected]="formFrequencyPreset === 'twice_daily'">
+                  <input
+                    type="radio"
+                    name="freqPreset"
+                    value="twice_daily"
+                    [(ngModel)]="formFrequencyPreset"
+                    (change)="onFrequencyChange()"
+                  />
+                  <span class="p-title">Twice Daily</span>
+                  <span class="p-sub">Morning & Evening (+12h)</span>
+                </label>
+                <label class="preset-card" [class.selected]="formFrequencyPreset === 'every_2_days'">
+                  <input
+                    type="radio"
+                    name="freqPreset"
+                    value="every_2_days"
+                    [(ngModel)]="formFrequencyPreset"
+                    (change)="onFrequencyChange()"
+                  />
+                  <span class="p-title">Every 2 Days</span>
+                  <span class="p-sub">Alternate days</span>
+                </label>
+                <label class="preset-card" [class.selected]="formFrequencyPreset === 'every_3_days'">
+                  <input
+                    type="radio"
+                    name="freqPreset"
+                    value="every_3_days"
+                    [(ngModel)]="formFrequencyPreset"
+                    (change)="onFrequencyChange()"
+                  />
+                  <span class="p-title">Every 3 Days</span>
+                  <span class="p-sub">Every third day</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Start Time (HH:MM)</label>
+              <input
+                type="time"
+                class="form-control time-input"
+                [(ngModel)]="formStartTime"
+                (change)="onFrequencyChange()"
+              />
+              <span class="form-hint">Time of day when the watering cycle will begin</span>
+            </div>
+          } @else {
+            <div class="form-group">
+              <label class="form-label">Custom Cron Expression</label>
+              <input
+                type="text"
+                class="form-control code-input"
+                placeholder="e.g. 0 6 * * 1,3,5"
+                [(ngModel)]="formCustomCron"
+              />
+              <span class="form-hint">Standard 5-part cron syntax (minute hour dom month dow)</span>
+            </div>
+          }
+
+          <!-- Duration Section -->
+          <div class="form-section-title">2. Watering Duration</div>
+          <div class="form-group">
+            <div class="duration-quick-presets">
+              @for (preset of durationPresets; track preset.seconds) {
+                <button
+                  type="button"
+                  class="dur-pill"
+                  [class.active]="formDurationSeconds === preset.seconds"
+                  (click)="formDurationSeconds = preset.seconds"
+                >
+                  {{ preset.label }}
+                </button>
+              }
+            </div>
+            <div class="duration-input-row">
+              <input
+                type="number"
+                min="1"
+                class="form-control num-input"
+                [(ngModel)]="formDurationSeconds"
+              />
+              <span class="unit-label">seconds</span>
+              <span class="converted-time">
+                ({{ formDurationSeconds >= 60 ? (formDurationSeconds / 60 | number:'1.0-1') + ' min' : formDurationSeconds + 's' }})
+              </span>
+            </div>
+            <span class="form-hint">How many seconds to keep the valve/switch turned on</span>
+          </div>
+
+          <!-- Notification Options -->
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                class="form-checkbox"
+                [checked]="formScheduleNotify === 1"
+                (change)="formScheduleNotify = $any($event.target).checked ? 1 : 0"
+              />
+              <span class="checkbox-text">🔔 Notify on execution (send to Notification use cases)</span>
+            </label>
+          </div>
+
+          @if (formScheduleNotify === 1) {
+            <div class="form-group">
+              <label class="form-label" for="sch-irrigation-notif-msg">Custom Notification Message (Optional)</label>
+              <input
+                id="sch-irrigation-notif-msg"
+                type="text"
+                class="form-control"
+                [(ngModel)]="formScheduleNotificationMessage"
+                placeholder="e.g. Watering cycle executed for garden"
+              />
+              <span class="form-hint">
+                Leave blank to use the standard message: <code>Schedule 'Auto - Irrigation - {{ activeDevice()?.name }}' executed successfully (Use case: {{ irrigationUseCase()?.name || 'start_irrigation' }})</code>
+              </span>
+            </div>
+          }
+
+          <!-- Active Status -->
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                [checked]="formScheduleIsActive === 1"
+                (change)="formScheduleIsActive = $any($event.target).checked ? 1 : 0"
+              />
+              <span>Schedule is Active</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeScheduleModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="saveSchedule()">
+            {{ scheduleModalMode() === 'create' ? 'Create Schedule' : 'Save Changes' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- MODAL 2: Event Create / Edit -->
+  @if (isEventModalOpen()) {
+    <div class="modal-backdrop" (click)="closeEventModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">
+              {{ eventModalMode() === 'create' ? 'New Irrigation Event Trigger' : 'Modify Event Trigger #' + selectedEventId() }}
+            </h2>
+            <p class="modal-subtitle">
+              Trigger watering on events for <strong>{{ activeDevice()?.name }}</strong>
+            </p>
+          </div>
+          <button class="btn-close" (click)="closeEventModal()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Auto-Configured Info Box -->
+          <div class="info-banner">
+            <div class="banner-item">
+              <span class="info-label">Name:</span>
+              <span class="info-val"><code>Auto - Irrigation - {{ activeDevice()?.name }}</code></span>
+            </div>
+            <div class="banner-item">
+              <span class="info-label">Device:</span>
+              <span class="info-val"><strong>{{ activeDevice()?.name }}</strong></span>
+            </div>
+            <div class="banner-item">
+              <span class="info-label">Use Case:</span>
+              <span class="info-val code-use-case">{{ irrigationUseCase()?.name || 'start_irrigation' }}</span>
+            </div>
+          </div>
+
+          <!-- Event Type -->
+          <div class="form-group">
+            <label class="form-label">Event Type</label>
+            <div class="event-type-presets">
+              <button
+                type="button"
+                class="event-btn"
+                [class.selected]="formEventType === 'sunset'"
+                (click)="formEventType = 'sunset'"
+              >
+                🌇 Sunset
+              </button>
+              <button
+                type="button"
+                class="event-btn"
+                [class.selected]="formEventType === 'sunrise'"
+                (click)="formEventType = 'sunrise'"
+              >
+                🌅 Sunrise
+              </button>
+            </div>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="or enter custom event type (e.g. rain_forecast)"
+              [(ngModel)]="formEventType"
+            />
+            <span class="form-hint">Event identifier received by the system (e.g. sunrise, sunset)</span>
+          </div>
+
+          <!-- Parameter (Optional) -->
+          <div class="form-group">
+            <label class="form-label">Parameter (Optional)</label>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="e.g. +00:30 (offset) or leave blank"
+              [(ngModel)]="formEventParameter"
+            />
+            <span class="form-hint">Optional parameter to match or pass with the event</span>
+          </div>
+
+          <!-- Duration -->
+          <div class="form-section-title">Watering Duration</div>
+          <div class="form-group">
+            <div class="duration-quick-presets">
+              @for (preset of durationPresets; track preset.seconds) {
+                <button
+                  type="button"
+                  class="dur-pill"
+                  [class.active]="formEventDurationSeconds === preset.seconds"
+                  (click)="formEventDurationSeconds = preset.seconds"
+                >
+                  {{ preset.label }}
+                </button>
+              }
+            </div>
+            <div class="duration-input-row">
+              <input
+                type="number"
+                min="1"
+                class="form-control num-input"
+                [(ngModel)]="formEventDurationSeconds"
+              />
+              <span class="unit-label">seconds</span>
+              <span class="converted-time">
+                ({{ formEventDurationSeconds >= 60 ? (formEventDurationSeconds / 60 | number:'1.0-1') + ' min' : formEventDurationSeconds + 's' }})
+              </span>
+            </div>
+            <span class="form-hint">Duration the valve will run when triggered by this event</span>
+          </div>
+
+          <!-- Holiday Schedule Filter -->
+          <div class="form-group">
+            <label class="form-label">Holiday Schedule</label>
+            <select class="form-control" [(ngModel)]="formEventHoliday">
+              <option value="all_days">All Days (Always run)</option>
+              <option value="holiday">Holidays & Weekends only</option>
+              <option value="not_holiday">Working days only (No holidays/weekends)</option>
+            </select>
+            <span class="form-hint">Controls which days this event trigger is allowed to run.</span>
+          </div>
+
+          <!-- Notification Options -->
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                class="form-checkbox"
+                [checked]="formEventNotify === 1"
+                (change)="formEventNotify = $any($event.target).checked ? 1 : 0"
+              />
+              <span class="checkbox-text">🔔 Notify on trigger (send to Notification use cases)</span>
+            </label>
+          </div>
+
+          @if (formEventNotify === 1) {
+            <div class="form-group">
+              <label class="form-label" for="ev-irrigation-notif-msg">Custom Notification Message (Optional)</label>
+              <input
+                id="ev-irrigation-notif-msg"
+                type="text"
+                class="form-control"
+                [(ngModel)]="formEventNotificationMessage"
+                placeholder="e.g. Irrigation started on event"
+              />
+              <span class="form-hint">
+                Leave blank to use the standard message: <code>Event 'Auto - Irrigation - {{ activeDevice()?.name }}' triggered [{{ formEventType }}{{ formEventParameter ? ': ' + formEventParameter : '' }}] -> Use case: {{ irrigationUseCase()?.name || 'start_irrigation' }}</code>
+              </span>
+            </div>
+          }
+
+          <!-- Active Checkbox -->
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                [checked]="formEventIsActive === 1"
+                (change)="formEventIsActive = $any($event.target).checked ? 1 : 0"
+              />
+              <span>Event Trigger is Active</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeEventModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="saveEvent()">
+            {{ eventModalMode() === 'create' ? 'Create Event' : 'Save Changes' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- MODAL 3: Device Create / Edit -->
+  @if (isDeviceModalOpen()) {
+    <div class="modal-backdrop" (click)="closeDeviceModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">
+              {{ deviceModalMode() === 'create' ? 'Configure New Irrigation Device' : 'Modify Irrigation Device #' + selectedDeviceId() }}
+            </h2>
+            <p class="modal-subtitle">Configure friendly name and entity binding for irrigation</p>
+          </div>
+          <button class="btn-close" (click)="closeDeviceModal()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Friendly Device Name</label>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="e.g. Lawn Sprinkler Zone 1"
+              [(ngModel)]="formDeviceName"
+            />
+            <span class="form-hint">Human-readable name used on cards and schedules</span>
+          </div>
+
+          <div class="form-group">
+            <div class="entity-select-label-row">
+              <label class="form-label">Home Assistant Entity</label>
+              <span class="ha-count">{{ hassEntities().length }} entities detected</span>
+            </div>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Search entities (e.g. switch.riego)..."
+              [(ngModel)]="deviceEntitySearch"
+            />
+            @if (filteredHassEntities().length > 0) {
+              <div class="entity-picker-list">
+                @for (ent of filteredHassEntities().slice(0, 15); track ent.entity_id) {
+                  <button
+                    type="button"
+                    class="entity-item-btn"
+                    [class.selected]="formDeviceEntityId === ent.entity_id"
+                    (click)="formDeviceEntityId = ent.entity_id"
+                  >
+                    <div class="entity-names">
+                      <strong>{{ ent.friendly_name || ent.entity_id }}</strong>
+                      <code>{{ ent.entity_id }}</code>
+                    </div>
+                    <span class="domain-tag">{{ ent.domain }}</span>
+                  </button>
+                }
+              </div>
+            }
+            <div class="manual-entity-row">
+              <span class="manual-label">Selected Entity ID:</span>
+              <input
+                type="text"
+                class="form-control code-input"
+                placeholder="e.g. switch.garden_valve"
+                [(ngModel)]="formDeviceEntityId"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeDeviceModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="saveDevice()">
+            {{ deviceModalMode() === 'create' ? 'Save & Configure Schedules' : 'Save Changes' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Confirm Modal -->
+  <app-confirm-modal
+    [isOpen]="isConfirmModalOpen()"
+    [title]="confirmModalTitle()"
+    [message]="confirmModalMessage()"
+    confirmText="Delete"
+    confirmVariant="danger"
+    [loading]="isConfirming()"
+    (confirmed)="handleConfirmModal()"
+    (cancelled)="closeConfirmModal()"
+  ></app-confirm-modal>
+</div>

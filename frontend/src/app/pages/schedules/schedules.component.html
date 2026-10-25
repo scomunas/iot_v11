@@ -1,0 +1,616 @@
+<div class="schedules-page">
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="header-titles">
+      <div class="title-with-icon">
+        <div class="header-icon-box">
+          <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="page-title">Schedules</h1>
+          <p class="page-subtitle">Configure in-memory automated jobs backed by SQLite database persistence</p>
+        </div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="loadSchedules()" [disabled]="loading()">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        Refresh
+      </button>
+      <button class="btn btn-primary" (click)="openCreateModal()">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        New Schedule
+      </button>
+    </div>
+  </header>
+
+  <!-- Alerts -->
+  @if (successMessage()) {
+    <div class="alert alert-success">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      <span>{{ successMessage() }}</span>
+    </div>
+  }
+
+  @if (errorMessage()) {
+    <div class="alert alert-danger">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span>{{ errorMessage() }}</span>
+    </div>
+  }
+
+  <!-- Controls Bar: Search & Filters -->
+  <div class="controls-bar">
+    <div class="search-box">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      <input
+        type="text"
+        placeholder="Search schedules by name, use case, or trigger..."
+        [ngModel]="searchQuery()"
+        (ngModelChange)="searchQuery.set($event)"
+      />
+    </div>
+
+    <div class="filter-tabs">
+      <button
+        class="tab-btn"
+        [class.active]="filterType() === 'all'"
+        (click)="filterType.set('all')"
+      >
+        All ({{ schedules().length }})
+      </button>
+      <button
+        class="tab-btn"
+        [class.active]="filterType() === 'recurrent'"
+        (click)="filterType.set('recurrent')"
+      >
+        Recurrent
+      </button>
+      <button
+        class="tab-btn"
+        [class.active]="filterType() === 'one-time'"
+        (click)="filterType.set('one-time')"
+      >
+        One-Time
+      </button>
+    </div>
+
+    <!-- Quick Sort Controls -->
+    <div class="sort-controls">
+      <span class="sort-label">Sort:</span>
+      <button
+        class="sort-pill-btn"
+        [class.active]="sortBy() === 'name'"
+        (click)="toggleSort('name')"
+        title="Sort by Name"
+      >
+        <span>Name</span>
+        <span class="direction-indicator">
+          @if (sortBy() === 'name') {
+            {{ sortDirection() === 'asc' ? '▲' : '▼' }}
+          } @else {
+            ↕
+          }
+        </span>
+      </button>
+
+      <button
+        class="sort-pill-btn"
+        [class.active]="sortBy() === 'next_run'"
+        (click)="toggleSort('next_run')"
+        title="Sort by Next Run Time"
+      >
+        <span>Next Run</span>
+        <span class="direction-indicator">
+          @if (sortBy() === 'next_run') {
+            {{ sortDirection() === 'asc' ? '▲' : '▼' }}
+          } @else {
+            ↕
+          }
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Schedules Table Container -->
+  <div class="table-card">
+    @if (loading() && schedules().length === 0) {
+      <div class="empty-state">
+        <p>Loading schedules...</p>
+      </div>
+    } @else if (filteredSchedules().length === 0) {
+      <div class="empty-state">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+        <h3>No schedules found</h3>
+        <p>Create your first automated schedule to trigger IoT tasks.</p>
+        <button class="btn btn-primary" (click)="openCreateModal()">Create Schedule</button>
+      </div>
+    } @else {
+      <!-- Desktop Table (hidden on mobile via CSS) -->
+      <table class="schedules-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th class="sortable-th" (click)="toggleSort('name')" title="Click to sort by Name">
+              <div class="th-content">
+                <span>Name</span>
+                <span class="sort-indicator" [class.active]="sortBy() === 'name'">
+                  @if (sortBy() === 'name') {
+                    {{ sortDirection() === 'asc' ? '▲' : '▼' }}
+                  } @else {
+                    ↕
+                  }
+                </span>
+              </div>
+            </th>
+            <th>Type</th>
+            <th>Trigger Specification</th>
+            <th>Use Case</th>
+            <th>Notify</th>
+            <th>Lock</th>
+            <th class="sortable-th" (click)="toggleSort('next_run')" title="Click to sort by Next Run Time">
+              <div class="th-content">
+                <span>Next Run (Memory)</span>
+                <span class="sort-indicator" [class.active]="sortBy() === 'next_run'">
+                  @if (sortBy() === 'next_run') {
+                    {{ sortDirection() === 'asc' ? '▲' : '▼' }}
+                  } @else {
+                    ↕
+                  }
+                </span>
+              </div>
+            </th>
+            <th>Status</th>
+            <th class="actions-col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (schedule of filteredSchedules(); track schedule.id) {
+            <tr>
+              <td class="id-cell">#{{ schedule.id }}</td>
+              <td class="name-cell">
+                <span class="schedule-title">{{ schedule.name }}</span>
+              </td>
+              <td>
+                <span class="badge" [ngClass]="schedule.type">
+                  {{ schedule.type === 'recurrent' ? 'Recurrent' : 'One-Time' }}
+                </span>
+              </td>
+              <td class="trigger-cell">
+                <code>{{ schedule.trigger_spec }}</code>
+              </td>
+              <td>
+                <span class="tag">{{ schedule.use_case }}</span>
+              </td>
+              <td>
+                @if (schedule.notify) {
+                  <span class="badge badge-notify" [title]="schedule.notification_message || 'Standard notification on completion'">🔔 Yes</span>
+                } @else {
+                  <span class="text-muted">—</span>
+                }
+              </td>
+              <td>
+                <button
+                  type="button"
+                  class="lock-toggle-btn"
+                  [class.locked]="schedule.block === 1"
+                  (click)="toggleBlock(schedule)"
+                  [title]="schedule.block === 1 ? 'Schedule is locked (protected). Click to unlock.' : 'Schedule is unlocked. Click to lock/protect.'"
+                >
+                  <span class="lock-icon">{{ schedule.block === 1 ? '🔒' : '🔓' }}</span>
+                  <span>{{ schedule.block === 1 ? 'Locked' : 'Unlocked' }}</span>
+                </button>
+              </td>
+              <td class="memory-cell">
+                @if (getNextRunTime(schedule.id)) {
+                  <span class="memory-badge active">
+                    <span class="dot"></span>
+                    {{ getNextRunTime(schedule.id) | date:'dd-MM-yyyy HH:mm' }}
+                  </span>
+                } @else {
+                  <span class="memory-badge inactive">
+                    <span class="dot"></span>
+                    Not queued
+                  </span>
+                }
+              </td>
+              <td>
+                <button
+                  class="status-toggle-btn"
+                  [class.active]="schedule.is_active === 1"
+                  (click)="toggleScheduleActive(schedule)"
+                  title="Click to toggle active/pause"
+                >
+                  <span class="status-indicator-dot"></span>
+                  {{ schedule.is_active === 1 ? 'Active' : 'Paused' }}
+                </button>
+              </td>
+              <td class="actions-col">
+                <button class="icon-btn edit-btn" (click)="openEditModal(schedule)" [title]="schedule.block === 1 ? 'Schedule is locked (view or unblock to edit)' : 'Modify Schedule'">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+                <button class="icon-btn delete-btn" (click)="deleteSchedule(schedule)" [disabled]="schedule.block === 1" [title]="schedule.block === 1 ? 'Schedule is locked and protected against deletion' : 'Delete Schedule'">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      <!-- Mobile Card List (hidden on desktop via CSS) -->
+      <div class="schedule-cards">
+        @for (schedule of filteredSchedules(); track schedule.id) {
+          <div class="schedule-card">
+            <div class="sc-header">
+              <span class="sc-name">{{ schedule.name }}</span>
+              <div class="sc-actions">
+                <button class="icon-btn edit-btn" (click)="openEditModal(schedule)" [title]="schedule.block === 1 ? 'Schedule is locked (view or unblock to edit)' : 'Modify'">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+                <button class="icon-btn delete-btn" (click)="deleteSchedule(schedule)" [disabled]="schedule.block === 1" [title]="schedule.block === 1 ? 'Schedule is locked and protected against deletion' : 'Delete'">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="sc-rows">
+              <div class="sc-row">
+                <span class="sc-label">Type</span>
+                <span class="badge" [ngClass]="schedule.type">
+                  {{ schedule.type === 'recurrent' ? 'Recurrent' : 'One-Time' }}
+                </span>
+              </div>
+              <div class="sc-row">
+                <span class="sc-label">Trigger</span>
+                <code>{{ schedule.trigger_spec }}</code>
+              </div>
+              <div class="sc-row">
+                <span class="sc-label">Use Case</span>
+                <span class="tag">{{ schedule.use_case }}</span>
+              </div>
+              <div class="sc-row">
+                <span class="sc-label">Notify</span>
+                <span>{{ schedule.notify ? '🔔 Yes' : '—' }}</span>
+              </div>
+              <div class="sc-row">
+                <span class="sc-label">Lock</span>
+                <button
+                  type="button"
+                  class="lock-toggle-btn"
+                  [class.locked]="schedule.block === 1"
+                  (click)="toggleBlock(schedule)"
+                >
+                  <span class="lock-icon">{{ schedule.block === 1 ? '🔒' : '🔓' }}</span>
+                  <span>{{ schedule.block === 1 ? 'Locked' : 'Unlocked' }}</span>
+                </button>
+              </div>
+              <div class="sc-row">
+                <span class="sc-label">Next Run</span>
+                @if (getNextRunTime(schedule.id)) {
+                  <span class="memory-badge active">
+                    <span class="dot"></span>
+                    {{ getNextRunTime(schedule.id) | date:'dd-MM-yyyy HH:mm' }}
+                  </span>
+                } @else {
+                  <span class="memory-badge inactive">
+                    <span class="dot"></span>
+                    Not queued
+                  </span>
+                }
+              </div>
+            </div>
+
+            <div class="sc-footer">
+              <button
+                class="status-toggle-btn"
+                [class.active]="schedule.is_active === 1"
+                (click)="toggleScheduleActive(schedule)"
+              >
+                <span class="status-indicator-dot"></span>
+                {{ schedule.is_active === 1 ? 'Active' : 'Paused' }}
+              </button>
+              <span class="tag" style="font-size: 0.7rem; color: var(--text-muted);">#{{ schedule.id }}</span>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- Create / Edit Modal -->
+  @if (isModalOpen()) {
+    <div class="modal-backdrop" (click)="closeModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h2 class="modal-title">
+            {{ modalMode() === 'create' ? 'Create New Schedule' : 'Modify Schedule #' + selectedScheduleId() }}
+          </h2>
+          <button class="btn-close" (click)="closeModal()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          @if (modalMode() === 'edit' && formBlock === 1) {
+            <div class="alert alert-warning" style="margin-bottom: 1rem; padding: 0.6rem 0.8rem; font-size: 0.825rem; display: flex; align-items: center; gap: 0.5rem; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 0.5rem; color: #fbbf24;">
+              <span>🔒 This schedule is locked. Uncheck the lock option below to modify parameters.</span>
+            </div>
+          }
+
+          <!-- Name -->
+          <div class="form-group">
+            <label class="form-label">Schedule Name</label>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="e.g. Check Living Room Sensors"
+              [(ngModel)]="formName"
+            />
+          </div>
+
+          <!-- Type Selection -->
+          <div class="form-group">
+            <label class="form-label">Schedule Type</label>
+            <div class="type-selector">
+              <label class="radio-card" [class.selected]="formType === 'recurrent'">
+                <input
+                  type="radio"
+                  name="scheduleType"
+                  value="recurrent"
+                  [(ngModel)]="formType"
+                  (change)="onTypeChange()"
+                />
+                <div class="radio-content">
+                  <span class="radio-title">Recurrent (Cron)</span>
+                  <span class="radio-sub">Executes repeatedly according to a cron schedule</span>
+                </div>
+              </label>
+
+              <label class="radio-card" [class.selected]="formType === 'one-time'">
+                <input
+                  type="radio"
+                  name="scheduleType"
+                  value="one-time"
+                  [(ngModel)]="formType"
+                  (change)="onTypeChange()"
+                />
+                <div class="radio-content">
+                  <span class="radio-title">One-Time (Datetime)</span>
+                  <span class="radio-sub">Executes once at a specific date and time</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Recurrent Trigger Options -->
+          @if (formType === 'recurrent') {
+            <div class="form-group">
+              <label class="form-label">Frequency Preset</label>
+              <select
+                class="form-control"
+                [(ngModel)]="cronPreset"
+                (change)="onCronPresetChange()"
+              >
+                <option value="*/1 * * * *">Every minute (*/1 * * * *)</option>
+                <option value="*/5 * * * *">Every 5 minutes (*/5 * * * *)</option>
+                <option value="*/15 * * * *">Every 15 minutes (*/15 * * * *)</option>
+                <option value="0 * * * *">Every hour (0 * * * *)</option>
+                <option value="0 8 * * *">Daily at 8:00 AM (0 8 * * *)</option>
+                <option value="0 22 * * *">Daily at 10:00 PM (0 22 * * *)</option>
+                <option value="custom">Custom Crontab Expression...</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Crontab Expression</label>
+              <input
+                type="text"
+                class="form-control code-input"
+                placeholder="e.g. */5 * * * *"
+                [(ngModel)]="formTriggerSpec"
+              />
+              <span class="form-hint">Format: minute hour day-of-month month day-of-week</span>
+            </div>
+          }
+
+          <!-- One-Time Trigger Options -->
+          @if (formType === 'one-time') {
+            <div class="form-group">
+              <label class="form-label">Execution Date & Time</label>
+              <input
+                type="datetime-local"
+                class="form-control"
+                [(ngModel)]="oneTimeDatetime"
+                (change)="onDatetimeChange()"
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">ISO-8601 Timestamp (Auto-generated)</label>
+              <input
+                type="text"
+                class="form-control code-input"
+                [(ngModel)]="formTriggerSpec"
+                readonly
+              />
+            </div>
+          }
+
+          <!-- Use Case (Strictly Restricted to Configured Use Cases in Settings) -->
+          <div class="form-group">
+            <div class="use-case-label-row">
+              <label class="form-label">Use Case (Task Identifier)</label>
+              <a routerLink="/settings" (click)="closeModal()" class="manage-settings-link" title="Open Settings to manage use cases">
+                Configure in Settings &rarr;
+              </a>
+            </div>
+
+            @if (configuredUseCases().length === 0) {
+              <div class="empty-use-cases-box">
+                <p>No use cases configured yet. Schedules must use a use case configured in Settings.</p>
+                <a routerLink="/settings" (click)="closeModal()" class="btn btn-sm btn-primary">
+                  Go to Settings
+                </a>
+              </div>
+            } @else {
+              <select class="form-control" [(ngModel)]="formUseCase" (change)="onUseCaseChange()">
+                @if (formUseCase && !isUseCaseConfigured(formUseCase)) {
+                  <option [value]="formUseCase" disabled>
+                    ⚠️ {{ formUseCase }} (Not configured in Settings)
+                  </option>
+                }
+                @for (uc of configuredUseCases(); track uc.id) {
+                  <option [value]="uc.name">
+                    {{ uc.name }} [{{ uc.function_name }}]
+                  </option>
+                }
+              </select>
+              <span class="form-hint">
+                Strictly restricted to use cases configured in Settings.
+              </span>
+            }
+          </div>
+
+          <!-- Data (JSON Parameters for Executable Function) -->
+          <div class="form-group">
+            <div class="data-label-row">
+              <label class="form-label">Parameters (Data - JSON)</label>
+              <button
+                type="button"
+                class="btn-format-json"
+                (click)="formatJsonData()"
+                title="Format JSON"
+              >
+                Format JSON
+              </button>
+            </div>
+            <textarea
+              class="form-control code-input data-textarea"
+              rows="4"
+              placeholder='{"entity": "cover.living_room_blind", "position": 100, "not_before": "19:30"}'
+              [(ngModel)]="formData"
+              spellcheck="false"
+            ></textarea>
+            <span class="form-hint">
+              Optional JSON parameters passed to the executable function (e.g. <code>entity</code>, <code>position</code>, and <code>not_before</code> for blinds, or <code>entity_id</code> and <code>seconds</code> for irrigation).
+            </span>
+          </div>
+
+          <!-- Notification Options -->
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                class="form-checkbox"
+                [checked]="formNotify === 1"
+                (change)="formNotify = $any($event.target).checked ? 1 : 0"
+              />
+              <span class="checkbox-text">🔔 Notify on execution (send to Notification use cases)</span>
+            </label>
+          </div>
+
+          @if (formNotify === 1) {
+            <div class="form-group">
+              <label class="form-label" for="schedule-notif-msg">Custom Notification Message (Optional)</label>
+              <input
+                id="schedule-notif-msg"
+                type="text"
+                class="form-control"
+                [(ngModel)]="formNotificationMessage"
+                placeholder="e.g. Watering cycle executed for garden"
+              />
+              <span class="form-hint">
+                Leave blank to use the standard message: <code>Schedule '{{ formName || 'Schedule' }}' executed successfully (Use case: {{ formUseCase || 'use_case' }})</code>
+              </span>
+            </div>
+          }
+
+          <!-- Lock / Block Option -->
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                class="form-checkbox"
+                [checked]="formBlock === 1"
+                (change)="formBlock = $any($event.target).checked ? 1 : 0"
+              />
+              <span class="checkbox-text">🔒 Lock schedule (protect against changes or deletion)</span>
+            </label>
+          </div>
+
+          <!-- Active Status (when editing) -->
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                [checked]="formIsActive === 1"
+                (change)="formIsActive = $any($event.target).checked ? 1 : 0"
+              />
+              <span>Schedule is Active (enabled in memory)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeModal()">Cancel</button>
+          <button
+            class="btn btn-primary"
+            (click)="saveSchedule()"
+            [disabled]="configuredUseCases().length === 0"
+          >
+            {{ modalMode() === 'create' ? 'Create Schedule' : 'Save Changes' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Delete Confirmation Modal -->
+  <app-confirm-modal
+    [isOpen]="isDeleteModalOpen() && !!scheduleToDelete()"
+    title="Delete Schedule"
+    confirmText="Delete"
+    [loading]="isDeleting()"
+    (confirmed)="confirmDeleteSchedule()"
+    (cancelled)="cancelDeleteSchedule()"
+  >
+    @if (scheduleToDelete(); as s) {
+      <p>
+        Are you sure you want to permanently delete schedule
+        <strong>"{{ s.name }}"</strong> (ID #{{ s.id }})?
+      </p>
+    }
+  </app-confirm-modal>
+</div>
