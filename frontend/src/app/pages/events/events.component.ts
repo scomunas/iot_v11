@@ -54,8 +54,9 @@ export class EventsComponent implements OnInit {
     }
   }
 
-  setEventType(type: string): void {
+  setEventType(type: string, param: string = ''): void {
     this.formType = type;
+    this.formParameter = param;
   }
 
   // Test firing state

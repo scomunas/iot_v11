@@ -193,9 +193,9 @@ iot_v11/
    ```typescript
    export const environment = {
      production: false,
-     backendUrl: 'http://localhost:8765',
+     backendUrl: '/api/v1',
      apiKey: 'iot-secret-key-change-me-in-production',
-     version: 'v11.0.0',
+     version: 'v11.0.2',
    };
    ```
 

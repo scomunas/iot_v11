@@ -562,6 +562,11 @@ export class IrrigationComponent implements OnInit {
     this.isEventModalOpen.set(true);
   }
 
+  selectEventPreset(type: string, param: string = ''): void {
+    this.formEventType = type;
+    this.formEventParameter = param;
+  }
+
   openEditEventModal(eventDef: EventDefinition): void {
     this.eventModalMode.set('edit');
     this.selectedEventId.set(eventDef.id);

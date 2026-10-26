@@ -815,7 +815,28 @@ async def fn_control_heating(
     return msg
 
 
+def fn_do_nothing(
+    schedule_id: Optional[int] = None,
+    name: Optional[str] = None,
+    schedule_type: Optional[str] = None,
+    use_case: Optional[str] = None,
+    data: Optional[Any] = None,
+) -> str:
+    """
+    No-op execution function that performs no device or system action.
+    Ideal for schedules or event triggers configured solely to dispatch notifications or log events.
+    """
+    logger.info("Executed do_nothing function for '%s' (type: %s, schedule_id: %s)", name, schedule_type, schedule_id)
+    return "OK: No action performed"
+
+
 SYSTEM_FUNCTIONS: Dict[str, Dict[str, Any]] = {
+    "do_nothing": {
+        "id": "do_nothing",
+        "name": "Do Nothing (No-op)",
+        "description": "Performs no action. Perfect for schedules or event triggers used solely to send notifications or log events",
+        "handler": fn_do_nothing,
+    },
     "create_datetime_file": {
         "id": "create_datetime_file",
         "name": "Create Datetime Text File",

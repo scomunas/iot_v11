@@ -28,6 +28,7 @@ def test_use_cases_crud_and_execution():
         assert "heating_recurrent" in data["available_sections"]
         assert any(fn["id"] == "create_datetime_file" for fn in data["available_functions"])
         assert any(fn["id"] == "control_heating" for fn in data["available_functions"])
+        assert any(fn["id"] == "do_nothing" for fn in data["available_functions"])
         
         # Check that default irrigation, blinds, and heating use cases have their section defined
         for uc in data["use_cases"]:
@@ -90,6 +91,25 @@ def test_use_cases_crud_and_execution():
         del_resp = client.delete(f"/use-cases/{uc_id}", headers=headers)
         assert del_resp.status_code == 200
         print("PASS: Deleted use case successfully")
+
+        # 6. Test do_nothing function creation and execution
+        dn_payload = {
+            "name": "notify_rain_alert",
+            "function_name": "do_nothing",
+            "description": "Notification-only use case for rain alerts",
+            "section": "rain",
+        }
+        dn_create = client.post("/use-cases", json=dn_payload, headers=headers)
+        assert dn_create.status_code == 201
+        dn_id = dn_create.json()["use_case"]["id"]
+
+        dn_test = client.post(f"/use-cases/{dn_id}/test", headers=headers)
+        assert dn_test.status_code == 200
+        assert dn_test.json()["result"] == "OK: No action performed"
+        print("PASS: Tested do_nothing use case execution: returned 'OK: No action performed'")
+
+        client.delete(f"/use-cases/{dn_id}", headers=headers)
+        print("PASS: Cleaned up do_nothing test use case")
 
 
 if __name__ == "__main__":

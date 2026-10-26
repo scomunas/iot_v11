@@ -565,6 +565,14 @@ export class BlindsComponent implements OnInit {
     this.isEventModalOpen.set(true);
   }
 
+  selectEventPreset(type: string, param: string = '', pos?: number): void {
+    this.formEventType = type;
+    this.formEventParameter = param;
+    if (pos !== undefined) {
+      this.formEventPosition = pos;
+    }
+  }
+
   openEditEventModal(eventDef: EventDefinition): void {
     this.eventModalMode.set('edit');
     this.selectedEventId.set(eventDef.id);

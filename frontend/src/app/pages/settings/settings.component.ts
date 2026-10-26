@@ -321,7 +321,7 @@ export class SettingsComponent implements OnInit {
       defaultJson = '{}';
     } else if (uc.function_name === 'set_heating_map') {
       defaultJson = JSON.stringify({ map_name: 'Comfort' }, null, 2);
-    } else if (uc.function_name === 'create_datetime_file') {
+    } else if (uc.function_name === 'create_datetime_file' || uc.function_name === 'do_nothing') {
       defaultJson = '{}';
     }
 

@@ -695,7 +695,7 @@
                 type="button"
                 class="event-btn"
                 [class.selected]="formEventType === 'sunset'"
-                (click)="formEventType = 'sunset'"
+                (click)="selectEventPreset('sunset', '')"
               >
                 🌇 Sunset
               </button>
@@ -703,7 +703,7 @@
                 type="button"
                 class="event-btn"
                 [class.selected]="formEventType === 'sunrise'"
-                (click)="formEventType = 'sunrise'"
+                (click)="selectEventPreset('sunrise', '')"
               >
                 🌅 Sunrise
               </button>
@@ -711,9 +711,9 @@
                 type="button"
                 class="event-btn"
                 [class.selected]="formEventType === 'rain'"
-                (click)="formEventType = 'rain'"
+                (click)="selectEventPreset('rain', 'start')"
               >
-                🌧️ Rain
+                🌧️ Rain (start)
               </button>
             </div>
             <input

@@ -428,6 +428,24 @@ def init_db() -> None:
 
         # Clean up unused heating use cases and remove legacy 'heating' section
         conn.execute("DELETE FROM use_cases WHERE name IN ('Heating Recurrent', 'set_heating_map')")
+
+        # Ensure default notification_only use case exists with do_nothing function
+        cursor.execute("SELECT id FROM use_cases WHERE function_name = 'do_nothing'")
+        if not cursor.fetchone():
+            now_utc = datetime.now(timezone.utc).isoformat()
+            cursor.execute(
+                """
+                INSERT INTO use_cases (name, function_name, description, section, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    "Notification Only",
+                    "do_nothing",
+                    "Performs no system action. Useful for schedules or event triggers used solely to send notifications",
+                    "notification",
+                    now_utc,
+                ),
+            )
         conn.execute("UPDATE use_cases SET section = 'heating_control' WHERE section = 'heating'")
 
         # Ensure start_heating and Heating Control are assigned to 'heating_control' section
