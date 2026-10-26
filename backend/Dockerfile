@@ -18,8 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend application code
+# Copy backend application code and environment configuration
 COPY app/ ./app/
+COPY .env* ./
 
 # Create persistent storage directories
 RUN mkdir -p /app/db /app/logs /app/output
