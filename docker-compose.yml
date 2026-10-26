@@ -17,7 +17,7 @@ services:
     container_name: iot-backend
     restart: unless-stopped
     ports:
-      - "8765:8765"
+      - "127.0.0.1:8765:8765"
     env_file:
       - ./backend/.env
     environment:

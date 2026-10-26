@@ -2,17 +2,16 @@ declare global {
   interface Window {
     IOT_CONFIG?: {
       apiKey?: string;
+      backendUrl?: string;
     };
   }
 }
 
 function getBackendUrl(): string {
-  if (typeof window !== 'undefined' && window.location) {
-    const protocol = window.location.protocol || 'http:';
-    const hostname = window.location.hostname || 'localhost';
-    return `${protocol}//${hostname}:8765`;
+  if (typeof window !== 'undefined' && window.IOT_CONFIG?.backendUrl) {
+    return window.IOT_CONFIG.backendUrl;
   }
-  return 'http://localhost:8765';
+  return '/api/v1';
 }
 
 function getApiKey(): string {

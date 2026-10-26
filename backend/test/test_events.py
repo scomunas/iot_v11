@@ -5,8 +5,10 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
+from datetime import datetime
 from fastapi.testclient import TestClient
 from app.main import app, API_KEY
+from app.database import db_is_holiday
 
 
 def test_events_endpoint():
@@ -165,11 +167,17 @@ def test_events_endpoint():
         nh_result = next((d for d in trig_defs if d["definition_id"] == nh_def_id), None)
 
         assert h_result is not None, "Expected holiday event to be in triggered definitions"
-        assert h_result["status"] == "executed", f"Expected holiday event to execute, got {h_result}"
-
         assert nh_result is not None, "Expected workdays event to be in triggered definitions"
-        assert nh_result["status"] == "skipped", f"Expected workdays event to be skipped on weekend, got {nh_result}"
-        print("PASS: Holiday filter logic verified: holiday event executed, workdays event skipped on weekend")
+
+        is_holiday_or_weekend = datetime.now().weekday() >= 5 or db_is_holiday(datetime.now().strftime("%Y-%m-%d"))
+        if is_holiday_or_weekend:
+            assert h_result["status"] == "executed", f"Expected holiday event to execute, got {h_result}"
+            assert nh_result["status"] == "skipped", f"Expected workdays event to be skipped on holiday/weekend, got {nh_result}"
+            print("PASS: Holiday filter logic verified: holiday event executed, workdays event skipped on weekend/holiday")
+        else:
+            assert h_result["status"] == "skipped", f"Expected holiday event to be skipped on workday, got {h_result}"
+            assert nh_result["status"] == "executed", f"Expected workdays event to execute on workday, got {nh_result}"
+            print("PASS: Holiday filter logic verified: holiday event skipped on workday, workdays event executed")
 
         # Clean up
         client.delete(f"/event-definitions/{h_def_id}", headers=headers)

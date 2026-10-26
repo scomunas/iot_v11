@@ -44,6 +44,16 @@ def test_database_initialization_and_health():
         assert "homeassistant" in data
         assert "timestamp" in data
         assert "environment" in data
+        # Check versioned /api/v1/ping and /api/v1/health endpoints
+        v1_ping = client.get("/api/v1/ping")
+        assert v1_ping.status_code == 200
+        assert v1_ping.json() == {"status": "ok"}
+
+        v1_health = client.get("/api/v1/health", headers={"X-API-Key": API_KEY})
+        assert v1_health.status_code == 200
+        assert v1_health.json()["status"] == "healthy"
+        print("Test passed: 200 OK for /api/v1/ping and /api/v1/health")
+
         print("Test passed: 200 OK with valid API Key and DB status:", data)
 
 

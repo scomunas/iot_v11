@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 from dotenv import load_dotenv
-from fastapi import Body, FastAPI, HTTPException, Query, Security, status
+from fastapi import APIRouter, Body, FastAPI, HTTPException, Query, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
@@ -202,6 +202,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+api_v1 = APIRouter()
+
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
@@ -248,12 +250,14 @@ class ScheduleBlockRequest(BaseModel):
 
 @app.get("/ping")
 @app.get("/health/ping")
+@api_v1.get("/ping")
+@api_v1.get("/health/ping")
 def ping():
     """Unauthenticated health ping endpoint for container and orchestrator health checks."""
     return {"status": "ok"}
 
 
-@app.get("/health")
+@api_v1.get("/health")
 def health_check(_: str = Security(verify_api_key)):
     """Health check endpoint protected by API Key."""
     ha_connected = check_homeassistant_connection()
@@ -267,7 +271,7 @@ def health_check(_: str = Security(verify_api_key)):
     }
 
 
-@app.get("/schedules")
+@api_v1.get("/schedules")
 def list_schedules(_: str = Security(verify_api_key)):
     """Retrieve all schedules from the database and current in-memory status."""
     return {
@@ -276,7 +280,7 @@ def list_schedules(_: str = Security(verify_api_key)):
     }
 
 
-@app.post("/schedules", status_code=status.HTTP_201_CREATED)
+@api_v1.post("/schedules", status_code=status.HTTP_201_CREATED)
 def create_schedule(payload: ScheduleCreateRequest, _: str = Security(verify_api_key)):
     """Create a new schedule, save to SQLite, and register into memory."""
     try:
@@ -298,7 +302,7 @@ def create_schedule(payload: ScheduleCreateRequest, _: str = Security(verify_api
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
 
-@app.get("/schedules/{schedule_id}")
+@api_v1.get("/schedules/{schedule_id}")
 def get_single_schedule(schedule_id: int, _: str = Security(verify_api_key)):
     """Retrieve a single schedule by ID."""
     sched = db_get_schedule(schedule_id)
@@ -307,7 +311,7 @@ def get_single_schedule(schedule_id: int, _: str = Security(verify_api_key)):
     return {"schedule": sched}
 
 
-@app.put("/schedules/{schedule_id}")
+@api_v1.put("/schedules/{schedule_id}")
 def update_schedule(
     schedule_id: int,
     payload: ScheduleUpdateRequest,
@@ -347,7 +351,7 @@ def update_schedule(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
 
-@app.delete("/schedules/{schedule_id}")
+@api_v1.delete("/schedules/{schedule_id}")
 def delete_schedule(schedule_id: int, permanent: bool = True, _: str = Security(verify_api_key)):
     """Delete a schedule from memory and database."""
     schedule = db_get_schedule(schedule_id)
@@ -368,7 +372,7 @@ def delete_schedule(schedule_id: int, permanent: bool = True, _: str = Security(
         return {"message": f"Schedule #{schedule_id} cancelled and deactivated"}
 
 
-@app.patch("/schedules/{schedule_id}/block")
+@api_v1.patch("/schedules/{schedule_id}/block")
 def set_schedule_block_status(
     schedule_id: int,
     payload: ScheduleBlockRequest,
@@ -406,7 +410,7 @@ class UseCaseUpdateRequest(BaseModel):
     section: Optional[str] = Field(None, description="Optional section identifier ('irrigation', 'blinds', 'rain', 'notification', 'heating', 'heating_control', 'heating_recurrent')")
 
 
-@app.get("/use-cases")
+@api_v1.get("/use-cases")
 def list_use_cases(_: str = Security(verify_api_key)):
     """Retrieve all configured use cases and available system functions."""
     available_fn_list = [
@@ -420,7 +424,7 @@ def list_use_cases(_: str = Security(verify_api_key)):
     }
 
 
-@app.post("/use-cases", status_code=status.HTTP_201_CREATED)
+@api_v1.post("/use-cases", status_code=status.HTTP_201_CREATED)
 def create_use_case(payload: UseCaseCreateRequest, _: str = Security(verify_api_key)):
     """Configure a new use case linked to an executable function."""
     if payload.function_name not in SYSTEM_FUNCTIONS:
@@ -441,7 +445,7 @@ def create_use_case(payload: UseCaseCreateRequest, _: str = Security(verify_api_
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
 
-@app.put("/use-cases/{use_case_id}")
+@api_v1.put("/use-cases/{use_case_id}")
 def update_use_case(use_case_id: int, payload: UseCaseUpdateRequest, _: str = Security(verify_api_key)):
     """Update a use case configuration."""
     if payload.function_name not in SYSTEM_FUNCTIONS:
@@ -466,7 +470,7 @@ def update_use_case(use_case_id: int, payload: UseCaseUpdateRequest, _: str = Se
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
 
-@app.delete("/use-cases/{use_case_id}")
+@api_v1.delete("/use-cases/{use_case_id}")
 def delete_use_case(use_case_id: int, _: str = Security(verify_api_key)):
     """Delete a use case configuration."""
     existing = db_get_use_case(use_case_id)
@@ -478,7 +482,7 @@ def delete_use_case(use_case_id: int, _: str = Security(verify_api_key)):
     return {"message": f"Use case #{use_case_id} deleted successfully"}
 
 
-@app.post("/use-cases/{use_case_id}/test")
+@api_v1.post("/use-cases/{use_case_id}/test")
 async def test_use_case(
     use_case_id: int,
     payload: Optional[Dict[str, Any]] = Body(default=None),
@@ -502,13 +506,13 @@ async def test_use_case(
 # System Settings Endpoints
 # ==========================================
 
-@app.get("/settings")
+@api_v1.get("/settings")
 def get_system_settings(_: str = Security(verify_api_key)):
     """Retrieve all configurable system settings."""
     return {"settings": db_get_all_settings()}
 
 
-@app.put("/settings")
+@api_v1.put("/settings")
 def update_system_settings(payload: Dict[str, Any] = Body(...), _: str = Security(verify_api_key)):
     """Update configurable system settings."""
     for k, v in payload.items():
@@ -549,19 +553,19 @@ class DeviceUpdateRequest(BaseModel):
     entity_id: str = Field(..., min_length=1, max_length=200, description="Home Assistant entity ID")
 
 
-@app.get("/homeassistant/entities")
+@api_v1.get("/homeassistant/entities")
 def list_homeassistant_entities(_: str = Security(verify_api_key)):
     """Retrieve all entities from Home Assistant REST API or fallback demo list."""
     return fetch_homeassistant_entities()
 
 
-@app.get("/devices")
+@api_v1.get("/devices")
 def list_devices(_: str = Security(verify_api_key)):
     """Retrieve all configured devices."""
     return {"devices": db_list_devices()}
 
 
-@app.post("/devices", status_code=status.HTTP_201_CREATED)
+@api_v1.post("/devices", status_code=status.HTTP_201_CREATED)
 def create_device(payload: DeviceCreateRequest, _: str = Security(verify_api_key)):
     """Configure a new device mapped to a Home Assistant entity."""
     try:
@@ -576,7 +580,7 @@ def create_device(payload: DeviceCreateRequest, _: str = Security(verify_api_key
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
 
-@app.put("/devices/{device_id}")
+@api_v1.put("/devices/{device_id}")
 def update_device(device_id: int, payload: DeviceUpdateRequest, _: str = Security(verify_api_key)):
     """Update an existing configured device."""
     existing = db_get_device(device_id)
@@ -595,7 +599,7 @@ def update_device(device_id: int, payload: DeviceUpdateRequest, _: str = Securit
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
 
-@app.delete("/devices/{device_id}")
+@api_v1.delete("/devices/{device_id}")
 def delete_device(device_id: int, _: str = Security(verify_api_key)):
     """Delete a configured device."""
     existing = db_get_device(device_id)
@@ -611,7 +615,7 @@ def delete_device(device_id: int, _: str = Security(verify_api_key)):
 # Logs Endpoints
 # ==========================================
 
-@app.get("/logs")
+@api_v1.get("/logs")
 def list_logs(
     page: int = Query(1, ge=1, description="Page number (1-based)"),
     page_size: int = Query(25, ge=5, le=500, description="Number of log records per page"),
@@ -628,7 +632,7 @@ def list_logs(
     )
 
 
-@app.delete("/logs")
+@api_v1.delete("/logs")
 def clear_logs(_: str = Security(verify_api_key)):
     """Clear in-memory backend logs buffer."""
     memory_log_handler.clear()
@@ -644,8 +648,8 @@ class EventReceiveRequest(BaseModel):
     parameter: str = Field(default="", description="Event parameter string")
 
 
-@app.post("/events", status_code=status.HTTP_200_OK)
-@app.post("/event", status_code=status.HTTP_200_OK, include_in_schema=False)
+@api_v1.post("/events", status_code=status.HTTP_200_OK)
+@api_v1.post("/event", status_code=status.HTTP_200_OK, include_in_schema=False)
 async def receive_event(payload: EventReceiveRequest, _: str = Security(verify_api_key)):
     """
     Receive an event via POST JSON body with 'type' and 'parameter' strings.
@@ -662,7 +666,7 @@ async def receive_event(payload: EventReceiveRequest, _: str = Security(verify_a
     }
 
 
-@app.get("/events")
+@api_v1.get("/events")
 def list_events(limit: int = Query(100, ge=1, le=500), _: str = Security(verify_api_key)):
     """Retrieve history of received events."""
     return {"events": db_list_events(limit=limit)}
@@ -696,13 +700,13 @@ class EventDefinitionUpdateRequest(BaseModel):
     is_active: Optional[int] = Field(default=1, ge=0, le=1, description="Active status (1=active, 0=paused)")
 
 
-@app.get("/event-definitions")
+@api_v1.get("/event-definitions")
 def list_event_definitions(_: str = Security(verify_api_key)):
     """Retrieve all configured event definitions."""
     return {"event_definitions": db_list_event_definitions()}
 
 
-@app.post("/event-definitions", status_code=status.HTTP_201_CREATED)
+@api_v1.post("/event-definitions", status_code=status.HTTP_201_CREATED)
 def create_event_definition(payload: EventDefinitionCreateRequest, _: str = Security(verify_api_key)):
     """Create a new event definition."""
     try:
@@ -726,7 +730,7 @@ def create_event_definition(payload: EventDefinitionCreateRequest, _: str = Secu
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
 
-@app.get("/event-definitions/{definition_id}")
+@api_v1.get("/event-definitions/{definition_id}")
 def get_event_definition(definition_id: int, _: str = Security(verify_api_key)):
     """Get a single event definition by ID."""
     defn = db_get_event_definition(definition_id)
@@ -735,7 +739,7 @@ def get_event_definition(definition_id: int, _: str = Security(verify_api_key)):
     return {"event_definition": defn}
 
 
-@app.put("/event-definitions/{definition_id}")
+@api_v1.put("/event-definitions/{definition_id}")
 def update_event_definition(
     definition_id: int,
     payload: EventDefinitionUpdateRequest,
@@ -767,7 +771,7 @@ def update_event_definition(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
 
-@app.delete("/event-definitions/{definition_id}")
+@api_v1.delete("/event-definitions/{definition_id}")
 def delete_event_definition(definition_id: int, _: str = Security(verify_api_key)):
     """Delete an event definition."""
     existing = db_get_event_definition(definition_id)
@@ -788,13 +792,13 @@ class HolidayPayload(BaseModel):
     name: Optional[str] = Field(None, description="Optional holiday name or description", example="Christmas")
 
 
-@app.get("/holidays")
+@api_v1.get("/holidays")
 def list_holidays(_: str = Security(verify_api_key)):
     """Retrieve all configured holidays ordered by date."""
     return {"holidays": db_list_holidays()}
 
 
-@app.post("/holidays", status_code=status.HTTP_201_CREATED)
+@api_v1.post("/holidays", status_code=status.HTTP_201_CREATED)
 def create_holiday(payload: HolidayPayload, _: str = Security(verify_api_key)):
     """Add a new holiday date to the holidays list."""
     clean_date = payload.date.strip()
@@ -823,7 +827,7 @@ def create_holiday(payload: HolidayPayload, _: str = Security(verify_api_key)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(err))
 
 
-@app.delete("/holidays/{holiday_id}")
+@api_v1.delete("/holidays/{holiday_id}")
 def delete_holiday(holiday_id: int, _: str = Security(verify_api_key)):
     """Delete a holiday by ID."""
     existing = db_get_holiday(holiday_id)
@@ -841,7 +845,7 @@ def delete_holiday(holiday_id: int, _: str = Security(verify_api_key)):
     return {"message": f"Holiday #{holiday_id} deleted successfully", "id": holiday_id}
 
 
-@app.post("/holidays/sync", status_code=status.HTTP_200_OK)
+@api_v1.post("/holidays/sync", status_code=status.HTTP_200_OK)
 async def sync_year_holidays(
     payload: Optional[Dict[str, Any]] = Body(default=None),
     _: str = Security(verify_api_key),
@@ -872,7 +876,7 @@ class TelegramSendRequest(BaseModel):
     parse_mode: Optional[str] = Field("HTML", description="Parse mode: HTML or Markdown")
 
 
-@app.get("/telegram/status")
+@api_v1.get("/telegram/status")
 def get_telegram_integration_status(_: str = Security(verify_api_key)):
     """Retrieve Telegram configuration and connectivity status."""
     try:
@@ -882,7 +886,7 @@ def get_telegram_integration_status(_: str = Security(verify_api_key)):
     return get_telegram_status()
 
 
-@app.post("/telegram/send")
+@api_v1.post("/telegram/send")
 def send_telegram_alert_endpoint(
     payload: TelegramSendRequest,
     _: str = Security(verify_api_key),
@@ -920,8 +924,8 @@ class HeatingStateRequest(BaseModel):
     until: Optional[str] = Field(default=None, description="ISO timestamp (or 'YYYY-MM-DDTHH:MM' or 'HH:MM') to deactivate heating until")
 
 
-@app.get("/heating/state")
-@app.get("/heating/status", include_in_schema=False)
+@api_v1.get("/heating/state")
+@api_v1.get("/heating/status", include_in_schema=False)
 def get_heating_state(_: str = Security(verify_api_key)):
     """Retrieve current heating system status, devices, active map, and pending resume schedules."""
     state_info = db_get_heating_state()
@@ -967,7 +971,7 @@ def get_heating_state(_: str = Security(verify_api_key)):
     }
 
 
-@app.post("/heating/state")
+@api_v1.post("/heating/state")
 async def update_heating_state(payload: HeatingStateRequest, _: str = Security(verify_api_key)):
     """
     Activate or deactivate the heating system.
@@ -1092,7 +1096,7 @@ class HeatingMapUpdateRequest(BaseModel):
     is_default: Optional[int] = Field(default=None, ge=0, le=1, description="1 if default heating map, 0 otherwise")
 
 
-@app.get("/heating/maps")
+@api_v1.get("/heating/maps")
 def list_heating_maps(_: str = Security(verify_api_key)):
     """Retrieve all configured heating maps with active and default map markers."""
     maps = db_list_heating_maps()
@@ -1105,7 +1109,7 @@ def list_heating_maps(_: str = Security(verify_api_key)):
     }
 
 
-@app.get("/heating/maps/{map_id}")
+@api_v1.get("/heating/maps/{map_id}")
 def get_heating_map(map_id: int, _: str = Security(verify_api_key)):
     """Retrieve a single heating map by ID."""
     map_item = db_get_heating_map(map_id)
@@ -1114,7 +1118,7 @@ def get_heating_map(map_id: int, _: str = Security(verify_api_key)):
     return {"map": map_item}
 
 
-@app.post("/heating/maps", status_code=status.HTTP_201_CREATED)
+@api_v1.post("/heating/maps", status_code=status.HTTP_201_CREATED)
 def create_heating_map(payload: HeatingMapCreateRequest, _: str = Security(verify_api_key)):
     """Create a new heating map with minimum temperature rules."""
     try:
@@ -1129,7 +1133,7 @@ def create_heating_map(payload: HeatingMapCreateRequest, _: str = Security(verif
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
 
-@app.put("/heating/maps/{map_id}")
+@api_v1.put("/heating/maps/{map_id}")
 def update_heating_map(map_id: int, payload: HeatingMapUpdateRequest, _: str = Security(verify_api_key)):
     """Update an existing heating map."""
     existing = db_get_heating_map(map_id)
@@ -1149,7 +1153,7 @@ def update_heating_map(map_id: int, payload: HeatingMapUpdateRequest, _: str = S
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
 
-@app.delete("/heating/maps/{map_id}")
+@api_v1.delete("/heating/maps/{map_id}")
 def delete_heating_map(map_id: int, _: str = Security(verify_api_key)):
     """Delete a heating map."""
     existing = db_get_heating_map(map_id)
@@ -1167,7 +1171,7 @@ def delete_heating_map(map_id: int, _: str = Security(verify_api_key)):
     return {"message": f"Heating map #{map_id} ('{existing.get('name')}') deleted successfully"}
 
 
-@app.post("/heating/maps/{map_id}/activate")
+@api_v1.post("/heating/maps/{map_id}/activate")
 def activate_heating_map_endpoint(map_id: int, _: str = Security(verify_api_key)):
     """Set a heating map as the currently active heating map."""
     existing = db_get_heating_map(map_id)
@@ -1182,7 +1186,7 @@ def activate_heating_map_endpoint(map_id: int, _: str = Security(verify_api_key)
     }
 
 
-@app.post("/heating/maps/{map_id}/set-default")
+@api_v1.post("/heating/maps/{map_id}/set-default")
 def set_default_heating_map_endpoint(map_id: int, _: str = Security(verify_api_key)):
     """Set a heating map as the default heating map."""
     existing = db_get_heating_map(map_id)
@@ -1228,7 +1232,7 @@ class HeatingCalendarBulkUpdateRequest(BaseModel):
     slots: List[Dict[str, Any]] = Field(..., description="List of calendar slots across weekdays")
 
 
-@app.get("/heating/calendar")
+@api_v1.get("/heating/calendar")
 def get_heating_calendar(_: str = Security(verify_api_key)):
     """Retrieve weekly heating calendar slots, metadata, and the heating map active right now."""
     now_local = datetime.now(APP_TIMEZONE)
@@ -1250,7 +1254,7 @@ def get_heating_calendar(_: str = Security(verify_api_key)):
     }
 
 
-@app.put("/heating/calendar/day")
+@api_v1.put("/heating/calendar/day")
 def update_heating_calendar_day_endpoint(
     payload: HeatingCalendarDayUpdateRequest,
     _: str = Security(verify_api_key),
@@ -1283,7 +1287,7 @@ def update_heating_calendar_day_endpoint(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
 
-@app.put("/heating/calendar")
+@api_v1.put("/heating/calendar")
 def update_heating_calendar_bulk_endpoint(
     payload: HeatingCalendarBulkUpdateRequest,
     _: str = Security(verify_api_key),
@@ -1301,6 +1305,10 @@ def update_heating_calendar_bulk_endpoint(
     except Exception as err:
         logger.error("Error updating heating calendar bulk: %s", err)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+
+
+app.include_router(api_v1, prefix="/api/v1")
+app.include_router(api_v1, prefix="", include_in_schema=False)
 
 
 if __name__ == "__main__":
