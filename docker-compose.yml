@@ -44,7 +44,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: iot-frontend:v11.0.0
+    image: iot-frontend:v11.0.1
     container_name: iot-frontend
     restart: unless-stopped
     ports:

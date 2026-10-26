@@ -167,7 +167,7 @@
                       <div class="summary-item-pill" [class.paused]="ev.is_active === 0">
                         <span class="status-indicator"></span>
                         <span class="item-event-type">
-                          {{ ev.type === 'sunrise' ? '🌅 Sunrise' : (ev.type === 'sunset' ? '🌇 Sunset' : ev.type) }}
+                          {{ ev.type === 'sunrise' ? '🌅 Sunrise' : (ev.type === 'sunset' ? '🌇 Sunset' : (ev.type === 'rain' ? '🌧️ Rain' : ev.type)) }}
                         </span>
                         @if (ev.parameter) {
                           <span class="item-param">({{ ev.parameter }})</span>
@@ -379,8 +379,8 @@
                   @for (ev of activeDeviceEvents(); track ev.id) {
                     <tr [class.row-paused]="ev.is_active === 0">
                       <td class="event-type-cell">
-                        <span class="event-pill" [class.sunrise]="ev.type === 'sunrise'" [class.sunset]="ev.type === 'sunset'">
-                          {{ ev.type === 'sunrise' ? '🌅 Sunrise' : (ev.type === 'sunset' ? '🌇 Sunset' : ev.type) }}
+                        <span class="event-pill" [class.sunrise]="ev.type === 'sunrise'" [class.sunset]="ev.type === 'sunset'" [class.rain]="ev.type === 'rain'">
+                          {{ ev.type === 'sunrise' ? '🌅 Sunrise' : (ev.type === 'sunset' ? '🌇 Sunset' : (ev.type === 'rain' ? '🌧️ Rain' : ev.type)) }}
                         </span>
                       </td>
                       <td class="param-cell">
@@ -707,14 +707,22 @@
               >
                 🌅 Sunrise
               </button>
+              <button
+                type="button"
+                class="event-btn"
+                [class.selected]="formEventType === 'rain'"
+                (click)="formEventType = 'rain'"
+              >
+                🌧️ Rain
+              </button>
             </div>
             <input
               type="text"
               class="form-control"
-              placeholder="or enter custom event type (e.g. rain_forecast)"
+              placeholder="or enter custom event type (e.g. rain, rain_forecast)"
               [(ngModel)]="formEventType"
             />
-            <span class="form-hint">Event identifier received by the system (e.g. sunrise, sunset)</span>
+            <span class="form-hint">Event identifier received by the system (e.g. sunrise, sunset, rain)</span>
           </div>
 
           <!-- Parameter (Optional) -->
