@@ -1,0 +1,220 @@
+<div class="logs-page">
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="header-titles">
+      <div class="title-with-icon">
+        <div class="header-icon-box">
+          <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="page-title">Backend Log</h1>
+          <p class="page-subtitle">Inspect backend runtime events, scheduled jobs, and system operations</p>
+        </div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <!-- Auto-refresh Toggle Button -->
+      <button
+        class="btn btn-secondary live-btn"
+        [class.active]="autoRefresh()"
+        (click)="toggleAutoRefresh()"
+        title="Toggle auto-refresh every 4 seconds"
+      >
+        <span class="live-dot" [class.pulsing]="autoRefresh()"></span>
+        <span>{{ autoRefresh() ? 'Live Auto-Update' : 'Auto-Update Off' }}</span>
+      </button>
+
+      <button class="btn btn-secondary" (click)="loadLogs()" [disabled]="loading()" title="Refresh logs">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        Refresh
+      </button>
+
+      <button class="btn btn-secondary danger-hover" (click)="clearLogs()" title="Clear logs in memory">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        </svg>
+        Clear
+      </button>
+    </div>
+  </header>
+
+  <!-- Filter & Controls Toolbar -->
+  <div class="logs-toolbar">
+    <!-- Level Filters -->
+    <div class="level-tabs">
+      @for (lvl of levelOptions; track lvl) {
+        <button
+          class="level-tab"
+          [class.active]="selectedLevel() === lvl"
+          (click)="onLevelChange(lvl)"
+        >
+          {{ lvl }}
+        </button>
+      }
+    </div>
+
+    <!-- Search Box -->
+    <div class="search-box">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      <input
+        type="text"
+        placeholder="Search logs..."
+        [ngModel]="searchQuery()"
+        (ngModelChange)="onSearchInput($event)"
+      />
+      @if (searchQuery()) {
+        <button class="clear-search-btn" (click)="onSearchInput('')">&times;</button>
+      }
+    </div>
+
+    <!-- Page Size Selector Top (Quick access) -->
+    <div class="page-size-selector">
+      <label for="pageSizeSelect">Per page:</label>
+      <select
+        id="pageSizeSelect"
+        [ngModel]="pageSize()"
+        (ngModelChange)="onPageSizeChange($event)"
+      >
+        @for (opt of pageSizeOptions; track opt) {
+          <option [value]="opt">{{ opt }}</option>
+        }
+      </select>
+    </div>
+  </div>
+
+  <!-- Logs Console / Table Card -->
+  <div class="logs-card">
+    @if (loading() && logs().length === 0) {
+      <div class="state-placeholder">
+        <p>Loading backend logs...</p>
+      </div>
+    } @else if (logs().length === 0) {
+      <div class="state-placeholder">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <polyline points="4 17 10 11 4 5" />
+          <line x1="12" y1="19" x2="20" y2="19" />
+        </svg>
+        <h3>No log records found</h3>
+        <p>No backend log entries matched your filter or search query.</p>
+      </div>
+    } @else {
+      <!-- Desktop Log Table -->
+      <table class="logs-table">
+        <thead>
+          <tr>
+            <th class="time-col">Timestamp</th>
+            <th class="level-col">Level</th>
+            <th class="logger-col">Logger</th>
+            <th class="msg-col">Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (log of logs(); track log.id) {
+            <tr class="log-row" [ngClass]="log.level.toLowerCase()">
+              <td class="time-cell">
+                <code>{{ log.timestamp }}</code>
+              </td>
+              <td class="level-cell">
+                <span class="level-badge" [ngClass]="log.level.toLowerCase()">
+                  {{ log.level }}
+                </span>
+              </td>
+              <td class="logger-cell">
+                <span class="logger-name">{{ log.logger }}</span>
+              </td>
+              <td class="msg-cell">
+                <pre class="log-msg">{{ log.message }}</pre>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      <!-- Mobile Log Cards -->
+      <div class="mobile-logs-list">
+        @for (log of logs(); track log.id) {
+          <div class="mobile-log-card" [ngClass]="log.level.toLowerCase()">
+            <div class="mlog-header">
+              <span class="level-badge" [ngClass]="log.level.toLowerCase()">
+                {{ log.level }}
+              </span>
+              <span class="logger-name">{{ log.logger }}</span>
+              <code class="mlog-time">{{ log.timestamp }}</code>
+            </div>
+            <pre class="log-msg">{{ log.message }}</pre>
+          </div>
+        }
+      </div>
+    }
+
+    <!-- Pagination Footer -->
+    <div class="pagination-bar">
+      <div class="pagination-info">
+        <span class="range-text">{{ displayedRange() }}</span>
+        <div class="page-size-wrap">
+          <label for="footerPageSize">Registers per page:</label>
+          <select
+            id="footerPageSize"
+            [ngModel]="pageSize()"
+            (ngModelChange)="onPageSizeChange($event)"
+          >
+            @for (opt of pageSizeOptions; track opt) {
+              <option [value]="opt">{{ opt }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div class="pagination-controls">
+        <button
+          class="page-btn nav-btn"
+          [disabled]="currentPage() <= 1"
+          (click)="prevPage()"
+          title="Previous Page"
+        >
+          &larr; Prev
+        </button>
+
+        @for (p of visiblePages(); track p) {
+          <button
+            class="page-btn num-btn"
+            [class.active]="currentPage() === p"
+            (click)="goToPage(p)"
+          >
+            {{ p }}
+          </button>
+        }
+
+        <button
+          class="page-btn nav-btn"
+          [disabled]="currentPage() >= totalPages()"
+          (click)="nextPage()"
+          title="Next Page"
+        >
+          Next &rarr;
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clear Logs Confirm Modal -->
+  <app-confirm-modal
+    [isOpen]="isClearModalOpen()"
+    title="Clear Backend Logs"
+    message="Are you sure you want to clear all in-memory backend logs? This action cannot be undone."
+    confirmText="Clear Logs"
+    confirmVariant="danger"
+    [loading]="isClearing()"
+    (confirmed)="confirmClearLogs()"
+    (cancelled)="cancelClearLogs()"
+  ></app-confirm-modal>
+</div>
