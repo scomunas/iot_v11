@@ -1,7 +1,7 @@
 # ==============================================================================
 # IoT Automation Backend Dockerfile
 # ==============================================================================
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Prevent Python from writing .pyc files and enable unbuffered output
 ENV PYTHONDONTWRITEBYTECODE=1 \
