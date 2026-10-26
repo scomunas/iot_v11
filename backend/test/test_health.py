@@ -28,6 +28,12 @@ def test_database_initialization_and_health():
         assert response.json()["detail"] == "Invalid or missing API Key"
         print("Test passed: 401 Unauthorized when invalid API Key")
 
+        # Check unauthenticated ping probe for Docker healthchecks
+        ping_resp = client.get("/ping")
+        assert ping_resp.status_code == 200
+        assert ping_resp.json() == {"status": "ok"}
+        print("Test passed: 200 OK for unauthenticated /ping endpoint")
+
         # Check health endpoint with valid key
         response = client.get("/health", headers={"X-API-Key": API_KEY})
         assert response.status_code == 200

@@ -246,6 +246,13 @@ class ScheduleBlockRequest(BaseModel):
     block: int = Field(..., ge=0, le=1, description="1 to block/protect schedule, 0 to unblock")
 
 
+@app.get("/ping")
+@app.get("/health/ping")
+def ping():
+    """Unauthenticated health ping endpoint for container and orchestrator health checks."""
+    return {"status": "ok"}
+
+
 @app.get("/health")
 def health_check(_: str = Security(verify_api_key)):
     """Health check endpoint protected by API Key."""
