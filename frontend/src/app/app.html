@@ -176,28 +176,12 @@
       <div class="system-status-widget">
         <div class="status-header">
           <span class="status-header-title">SYSTEM STATUS</span>
-          <div class="status-header-actions">
-            <button class="btn-refresh" (click)="promptApiKey()" title="Configure API Key">
-              <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="8" cy="15" r="4" />
-                <line x1="10.85" y1="12.15" x2="19" y2="4" />
-                <line x1="18" y1="5" x2="20" y2="7" />
-                <line x1="15" y1="8" x2="17" y2="10" />
-              </svg>
-            </button>
-            <button class="btn-refresh" (click)="refreshBackend()" title="Re-check health">
-              <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        @if (healthService.errorMessage()?.includes('401')) {
-          <button class="api-key-warning" (click)="promptApiKey()" title="Click to configure valid API Key">
-            ⚠️ Invalid API Key (click to fix)
+          <button class="btn-refresh" (click)="refreshBackend()" title="Re-check health">
+            <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
           </button>
-        }
+        </div>
 
         <div class="status-items">
           <div class="status-item">

@@ -261,12 +261,6 @@
         letter-spacing: 0.08em;
       }
 
-      .status-header-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.25rem;
-      }
-
       .btn-refresh {
         background: transparent;
         border: none;
@@ -288,25 +282,8 @@
 
         &:hover, &:active {
           color: var(--text-primary);
+          transform: rotate(45deg);
         }
-      }
-    }
-
-    .api-key-warning {
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid rgba(239, 68, 68, 0.4);
-      color: #fca5a5;
-      font-size: 0.6875rem;
-      font-weight: 600;
-      padding: 0.35rem 0.5rem;
-      border-radius: 0.375rem;
-      cursor: pointer;
-      text-align: center;
-      transition: background 0.2s ease, border-color 0.2s ease;
-
-      &:hover {
-        background: rgba(239, 68, 68, 0.25);
-        border-color: #ef4444;
       }
     }
 
