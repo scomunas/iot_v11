@@ -67,7 +67,7 @@ export class BackendHealthService {
         this.status.set('offline');
         this.healthData.set(null);
         this.lastChecked.set(new Date());
-        this.errorMessage.set(err.status ? `HTTP ${err.status}` : 'Connection refused');
+        this.errorMessage.set(err.status === 401 ? 'Invalid API Key (HTTP 401)' : (err.status ? `HTTP ${err.status}` : 'Connection refused'));
       }
     });
   }

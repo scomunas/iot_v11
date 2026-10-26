@@ -27,6 +27,10 @@ COPY --from=build /app/dist/iot/browser /usr/share/nginx/html
 # Copy custom Nginx configuration supporting Angular SPA routing
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
+# Copy entrypoint script to dynamically inject environment variables (like API_KEY) into config.js
+COPY docker-entrypoint.sh /docker-entrypoint.d/40-generate-config.sh
+RUN chmod +x /docker-entrypoint.d/40-generate-config.sh
+
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

@@ -49,6 +49,8 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+    env_file:
+      - ./backend/.env
     depends_on:
       backend:
         condition: service_healthy

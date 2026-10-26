@@ -29,4 +29,22 @@ export class App {
   refreshBackend(): void {
     this.healthService.checkHealth();
   }
+
+  promptApiKey(): void {
+    const current = environment.apiKey;
+    const isDefault = current === 'iot-secret-key-change-me-in-production';
+    const entered = window.prompt(
+      'Enter IoT Backend API Key:\n(Leave empty to reset to default/server configuration)',
+      isDefault ? '' : current
+    );
+
+    if (entered !== null) {
+      if (entered.trim()) {
+        environment.setApiKey(entered.trim());
+      } else {
+        environment.clearApiKey();
+      }
+      this.healthService.checkHealth();
+    }
+  }
 }
