@@ -415,12 +415,14 @@
                 <th class="status-col">STATUS</th>
                 @if (temperatureDevices().length > 0) {
                   @for (dev of temperatureDevices(); track dev.id) {
-                    <th class="sensor-col" [title]="dev.entity_id">
-                      {{ dev.name | uppercase }}
+                    <th class="sensor-col" [title]="dev.name + (dev.entity_id ? ' (' + dev.entity_id + ')' : '')">
+                      <div class="rotated-sensor-header">
+                        <span class="sensor-name-text">{{ dev.name }}</span>
+                      </div>
                     </th>
                   }
                 } @else {
-                  <th class="sensor-col">TARGET TEMPERATURES</th>
+                  <th class="sensor-col no-rotate">TARGET TEMPERATURES</th>
                 }
                 <th class="actions-col">ACTIONS</th>
               </tr>

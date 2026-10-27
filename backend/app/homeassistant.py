@@ -7,18 +7,20 @@ from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
-FALLBACK_ENTITIES: List[Dict[str, str]] = [
+FALLBACK_ENTITIES: List[Dict[str, Any]] = [
     {
         "entity_id": "cover.living_room_blind",
         "friendly_name": "Living Room Blind",
         "domain": "cover",
         "state": "open",
+        "current_position": 100,
     },
     {
         "entity_id": "cover.bedroom_blind",
         "friendly_name": "Bedroom Window Blind",
         "domain": "cover",
         "state": "closed",
+        "current_position": 0,
     },
     {
         "entity_id": "light.living_room_ceiling",
@@ -174,14 +176,18 @@ def fetch_homeassistant_entities() -> Dict[str, Any]:
                     domain = entity_id.split(".")[0] if "." in entity_id else "unknown"
                     state = str(item.get("state", ""))
 
-                    entities.append(
-                        {
-                            "entity_id": entity_id,
-                            "friendly_name": friendly_name,
-                            "domain": domain,
-                            "state": state,
-                        }
-                    )
+                    ent_dict = {
+                        "entity_id": entity_id,
+                        "friendly_name": friendly_name,
+                        "domain": domain,
+                        "state": state,
+                    }
+                    if "current_position" in attributes:
+                        try:
+                            ent_dict["current_position"] = int(attributes["current_position"])
+                        except (ValueError, TypeError):
+                            pass
+                    entities.append(ent_dict)
 
                 entities.sort(key=lambda x: x["friendly_name"].lower())
                 return {
@@ -233,6 +239,24 @@ def call_homeassistant_service(
     hass_token = os.getenv("HASS_TOKEN", "").strip()
 
     if not hass_token:
+        # In mock mode, update the state of the fallback entity if present
+        for ent in FALLBACK_ENTITIES:
+            if ent.get("entity_id") == entity_id:
+                if service == "set_cover_position" and service_data and "position" in service_data:
+                    pos = int(service_data["position"])
+                    ent["current_position"] = pos
+                    ent["state"] = "closed" if pos == 0 else "open"
+                elif service == "open_cover":
+                    ent["current_position"] = 100
+                    ent["state"] = "open"
+                elif service == "close_cover":
+                    ent["current_position"] = 0
+                    ent["state"] = "closed"
+                elif service in ("turn_on", "open_valve"):
+                    ent["state"] = "on"
+                elif service in ("turn_off", "close_valve"):
+                    ent["state"] = "off"
+
         logger.info(
             "[MOCK HA] Token not configured. Simulated calling %s.%s for '%s' with data=%s",
             domain,

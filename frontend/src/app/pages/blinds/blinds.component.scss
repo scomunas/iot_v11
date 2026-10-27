@@ -279,7 +279,8 @@
 
     .device-actions {
       display: flex;
-      gap: 0.35rem;
+      align-items: center;
+      gap: 0.65rem;
       flex-shrink: 0;
     }
   }
@@ -600,7 +601,9 @@
 
       .banner-actions {
         display: flex;
-        gap: 0.5rem;
+        align-items: center;
+        gap: 0.85rem;
+        flex-wrap: wrap;
       }
     }
   }
@@ -1431,10 +1434,104 @@
     .banner-actions {
       width: 100%;
 
+      .blind-slider-control {
+        width: 100%;
+        justify-content: space-between;
+
+        .blind-range-slider {
+          flex: 1;
+        }
+      }
+
       .btn {
         width: 100%;
         justify-content: center;
       }
+    }
+  }
+}
+
+/* ───── Manual Blind Position Slider Control ───── */
+.blind-slider-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  background: rgba(0, 0, 0, 0.24);
+  padding: 0.3rem 0.75rem 0.3rem 0.65rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: border-color 0.2s ease, background 0.2s ease;
+
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .blind-range-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 95px;
+    height: 6px;
+    background: #475569;
+    border-radius: 6px;
+    outline: none;
+    cursor: pointer;
+    transition: background 0.2s ease;
+
+    &::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #38bdf8;
+      cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+      transition: transform 0.15s ease, background-color 0.15s ease;
+    }
+
+    &::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      background: #60a5fa;
+    }
+
+    &::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border: none;
+      border-radius: 50%;
+      background: #38bdf8;
+      cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  }
+
+  .blind-slider-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    white-space: nowrap;
+    min-width: 32px;
+    text-align: right;
+    user-select: none;
+    transition: color 0.2s ease;
+
+    &.is-open {
+      color: #38bdf8;
+    }
+  }
+
+  &.banner-slider {
+    padding: 0.35rem 0.85rem 0.35rem 0.75rem;
+
+    .blind-range-slider {
+      width: 130px;
     }
   }
 }

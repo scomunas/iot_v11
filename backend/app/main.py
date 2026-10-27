@@ -71,7 +71,11 @@ try:
         db_update_use_case,
         init_db,
     )
-    from app.homeassistant import fetch_homeassistant_entities, check_homeassistant_connection
+    from app.homeassistant import (
+        fetch_homeassistant_entities,
+        check_homeassistant_connection,
+        call_homeassistant_service,
+    )
     from app.scheduler import (
         APP_TIMEZONE,
         SYSTEM_FUNCTIONS,
@@ -135,7 +139,11 @@ except ImportError:
         db_update_use_case,
         init_db,
     )
-    from homeassistant import fetch_homeassistant_entities, check_homeassistant_connection
+    from homeassistant import (
+        fetch_homeassistant_entities,
+        check_homeassistant_connection,
+        call_homeassistant_service,
+    )
     from scheduler import (
         APP_TIMEZONE,
         SYSTEM_FUNCTIONS,
@@ -547,6 +555,14 @@ class DeviceCreateRequest(BaseModel):
     entity_id: str = Field(..., min_length=1, max_length=200, description="Home Assistant entity ID")
 
 
+class DeviceActionRequest(BaseModel):
+    action: Optional[Literal["on", "off", "toggle", "set_position"]] = Field(
+        None,
+        description="Action to perform on device: 'on', 'off', 'toggle', or 'set_position'"
+    )
+    position: Optional[int] = Field(None, ge=0, le=100, description="Target position for blinds/covers (0-100)")
+
+
 class DeviceUpdateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Device friendly name")
     type: Literal["light", "irrigation", "temperature", "movement", "presence", "blinds", "rain", "heating"]
@@ -609,6 +625,88 @@ def delete_device(device_id: int, _: str = Security(verify_api_key)):
     db_delete_device(device_id)
     logger.info("Device deleted: ID #%s ('%s')", device_id, existing.get("name"))
     return {"message": f"Device #{device_id} deleted successfully"}
+
+
+@api_v1.post("/devices/{device_id}/action")
+def trigger_device_action(
+    device_id: int,
+    payload: DeviceActionRequest,
+    _: str = Security(verify_api_key),
+):
+    """
+    Manually turn on, off, or toggle a configured device in Home Assistant.
+    """
+    device = db_get_device(device_id)
+    if not device:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Device #{device_id} not found")
+
+    entity_id = device.get("entity_id")
+    if not entity_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Device #{device_id} has no entity_id configured")
+
+    domain = entity_id.split(".")[0] if "." in entity_id else "homeassistant"
+
+    # Handle blind / cover position setting
+    if payload.position is not None or payload.action == "set_position":
+        pos = payload.position if payload.position is not None else 0
+        pos = max(0, min(100, pos))
+        ha_result = call_homeassistant_service(
+            domain=domain,
+            service="set_cover_position",
+            entity_id=entity_id,
+            service_data={"position": pos},
+        )
+        new_state = "closed" if pos == 0 else "open"
+        logger.info("Manual blind position set: Device #%s ('%s', %s) -> %s%%", device_id, device.get("name"), entity_id, pos)
+        return {
+            "status": "success",
+            "device_id": device_id,
+            "entity_id": entity_id,
+            "action": "set_position",
+            "position": pos,
+            "state": new_state,
+            "ha_result": ha_result,
+            "message": f"Device '{device.get('name')}' ({entity_id}) moved to {pos}%",
+        }
+
+    target_action = payload.action.lower() if payload.action else "toggle"
+    if target_action == "toggle":
+        ha_res = fetch_homeassistant_entities()
+        entities = ha_res.get("entities", [])
+        curr_state = "off"
+        for ent in entities:
+            if ent.get("entity_id") == entity_id:
+                curr_state = ent.get("state", "off")
+                break
+        if domain == "cover":
+            target_action = "off" if curr_state == "open" else "on"
+        else:
+            target_action = "off" if curr_state == "on" else "on"
+
+    if domain == "cover":
+        service = "open_cover" if target_action == "on" else "close_cover"
+        new_state = "open" if target_action == "on" else "closed"
+        pos = 100 if target_action == "on" else 0
+    else:
+        service = "turn_on" if target_action == "on" else "turn_off"
+        new_state = target_action
+        pos = None
+
+    ha_result = call_homeassistant_service(domain=domain, service=service, entity_id=entity_id)
+
+    logger.info("Manual device action executed: Device #%s ('%s', %s) -> %s", device_id, device.get("name"), entity_id, target_action.upper())
+    res_data = {
+        "status": "success",
+        "device_id": device_id,
+        "entity_id": entity_id,
+        "action": target_action,
+        "state": new_state,
+        "ha_result": ha_result,
+        "message": f"Device '{device.get('name')}' ({entity_id}) turned {target_action.upper()}",
+    }
+    if pos is not None:
+        res_data["position"] = pos
+    return res_data
 
 
 # ==========================================

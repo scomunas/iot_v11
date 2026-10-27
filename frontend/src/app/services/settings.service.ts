@@ -78,11 +78,22 @@ export interface DevicesResponse {
   devices: DeviceItem[];
 }
 
+export interface DeviceActionResponse {
+  status: string;
+  device_id: number;
+  entity_id: string;
+  action: 'on' | 'off' | 'toggle' | 'set_position';
+  state: string;
+  position?: number;
+  message: string;
+}
+
 export interface HomeAssistantEntity {
   entity_id: string;
   friendly_name: string;
   domain: string;
   state: string;
+  current_position?: number;
 }
 
 export interface HomeAssistantEntitiesResponse {
@@ -172,6 +183,22 @@ export class SettingsService {
   deleteDevice(id: number): Observable<{ message: string }> {
     return this.http.delete<{ message: string }>(
       `${environment.backendUrl}/devices/${id}`,
+      { headers: this.headers }
+    );
+  }
+
+  triggerDeviceAction(
+    deviceId: number,
+    action: 'on' | 'off' | 'toggle' | 'set_position',
+    position?: number
+  ): Observable<DeviceActionResponse> {
+    const payload: any = { action };
+    if (position !== undefined && position !== null) {
+      payload.position = position;
+    }
+    return this.http.post<DeviceActionResponse>(
+      `${environment.backendUrl}/devices/${deviceId}/action`,
+      payload,
       { headers: this.headers }
     );
   }

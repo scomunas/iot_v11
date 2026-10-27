@@ -42,6 +42,8 @@ export class BlindsComponent implements OnInit {
   readonly loading = signal<boolean>(false);
   readonly errorMessage = signal<string | null>(null);
   readonly successMessage = signal<string | null>(null);
+  readonly operatingDeviceIds = signal<Set<number>>(new Set());
+  readonly localDevicePositions = signal<Map<number, number>>(new Map());
 
   // Active Device selection (null = show all cards, DeviceItem = show 2 tables view)
   readonly activeDevice = signal<DeviceItem | null>(null);
@@ -248,6 +250,95 @@ export class BlindsComponent implements OnInit {
 
   closeDeviceDetail(): void {
     this.activeDevice.set(null);
+  }
+
+  // ==========================================
+  // Manual Blind Position Controls (Slider)
+  // ==========================================
+  isDeviceOperating(deviceId: number): boolean {
+    return this.operatingDeviceIds().has(deviceId);
+  }
+
+  getDevicePosition(device: DeviceItem): number {
+    if (!device) return 100;
+    if (this.localDevicePositions().has(device.id)) {
+      return this.localDevicePositions().get(device.id)!;
+    }
+    const match = this.hassEntities().find((e) => e.entity_id === device.entity_id);
+    if (match) {
+      if (match.current_position !== undefined && match.current_position !== null) {
+        return Number(match.current_position);
+      }
+      if (match.state?.toLowerCase() === 'closed') return 0;
+      if (match.state?.toLowerCase() === 'open') return 100;
+    }
+    return 100;
+  }
+
+  onSliderInput(device: DeviceItem, event: Event): void {
+    if (!device) return;
+    const inputEl = event.target as HTMLInputElement;
+    const val = Math.min(100, Math.max(0, parseInt(inputEl.value, 10) || 0));
+    this.localDevicePositions.update((map) => new Map(map).set(device.id, val));
+  }
+
+  onSliderChange(device: DeviceItem, event: Event): void {
+    if (!device) return;
+    const inputEl = event.target as HTMLInputElement;
+    const targetPos = Math.min(100, Math.max(0, parseInt(inputEl.value, 10) || 0));
+
+    this.operatingDeviceIds.update((s) => new Set(s).add(device.id));
+
+    this.settingsService.triggerDeviceAction(device.id, 'set_position', targetPos).subscribe({
+      next: (resp) => {
+        const finalPos = resp.position !== undefined ? resp.position : targetPos;
+        this.hassEntities.update((entities) =>
+          entities.map((e) =>
+            e.entity_id === device.entity_id
+              ? {
+                  ...e,
+                  state: finalPos === 0 ? 'closed' : 'open',
+                  current_position: finalPos,
+                }
+              : e
+          )
+        );
+        this.localDevicePositions.update((map) => {
+          const next = new Map(map);
+          next.delete(device.id);
+          return next;
+        });
+        this.operatingDeviceIds.update((s) => {
+          const updated = new Set(s);
+          updated.delete(device.id);
+          return updated;
+        });
+        this.successMessage.set(resp.message || `Blind '${device.name}' set to ${finalPos}%`);
+        setTimeout(() => {
+          if (this.successMessage()?.includes(device.name)) {
+            this.successMessage.set(null);
+          }
+        }, 4000);
+      },
+      error: (err) => {
+        this.localDevicePositions.update((map) => {
+          const next = new Map(map);
+          next.delete(device.id);
+          return next;
+        });
+        this.operatingDeviceIds.update((s) => {
+          const updated = new Set(s);
+          updated.delete(device.id);
+          return updated;
+        });
+        this.errorMessage.set(err.error?.detail || err.message || `Failed to move blind`);
+        this.settingsService.getHomeAssistantEntities().subscribe({
+          next: (r) => this.hassEntities.set(r.entities || []),
+          error: () => {},
+        });
+        setTimeout(() => this.errorMessage.set(null), 5000);
+      },
+    });
   }
 
   getSchedulesForDevice(device: DeviceItem): Schedule[] {

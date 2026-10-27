@@ -72,6 +72,32 @@ def test_homeassistant_and_devices_flow():
         assert up_resp.json()["device"]["name"] == "Updated Living Room Light"
         print(f"PASS: Updated device #{update_id} successfully")
 
+        # 5b. Test POST /devices/{device_id}/action (Manual on/off/toggle)
+        irrig_id = created_ids[1]
+        action_on_resp = client.post(f"/devices/{irrig_id}/action", json={"action": "on"}, headers=headers)
+        assert action_on_resp.status_code == 200, f"Expected 200, got {action_on_resp.status_code}: {action_on_resp.text}"
+        assert action_on_resp.json()["action"] == "on"
+        assert action_on_resp.json()["state"] == "on"
+        print(f"PASS: Turned ON device #{irrig_id} manually")
+
+        action_off_resp = client.post(f"/devices/{irrig_id}/action", json={"action": "off"}, headers=headers)
+        assert action_off_resp.status_code == 200
+        assert action_off_resp.json()["action"] == "off"
+        assert action_off_resp.json()["state"] == "off"
+        print(f"PASS: Turned OFF device #{irrig_id} manually")
+
+        action_toggle_resp = client.post(f"/devices/{irrig_id}/action", json={"action": "toggle"}, headers=headers)
+        assert action_toggle_resp.status_code == 200
+        print(f"PASS: Toggled device #{irrig_id} manually (result: {action_toggle_resp.json()['action']})")
+
+        # 5c. Test POST /devices/{device_id}/action with blind position slider
+        blind_id = created_ids[2]
+        action_pos_resp = client.post(f"/devices/{blind_id}/action", json={"action": "set_position", "position": 65}, headers=headers)
+        assert action_pos_resp.status_code == 200, f"Expected 200, got {action_pos_resp.status_code}: {action_pos_resp.text}"
+        assert action_pos_resp.json()["action"] == "set_position"
+        assert action_pos_resp.json()["position"] == 65
+        print(f"PASS: Set blind position for device #{blind_id} to 65% manually")
+
         # 6. Test DELETE /devices/{device_id} for all created
         for dev_id in created_ids:
             del_resp = client.delete(f"/devices/{dev_id}", headers=headers)

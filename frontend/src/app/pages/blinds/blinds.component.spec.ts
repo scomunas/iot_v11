@@ -130,10 +130,27 @@ describe('BlindsComponent', () => {
     mockSettingsService = {
       getDevices: () => of(mockDevicesResponse),
       getUseCases: () => of(mockUseCasesResponse),
-      getHomeAssistantEntities: () => of({ connected: true, hass_url: '', entities: [], error: null }),
+      getHomeAssistantEntities: () => of({
+        connected: true,
+        hass_url: '',
+        entities: [
+          { entity_id: 'cover.living_room_blind', friendly_name: 'Living Room Blind', domain: 'cover', state: 'open', current_position: 100 },
+          { entity_id: 'cover.bedroom_blind', friendly_name: 'Bedroom Blind', domain: 'cover', state: 'closed', current_position: 0 },
+        ],
+        error: null,
+      }),
       createDevice: (payload: any) => of({ message: 'Created', device: { id: 14, ...payload } }),
       updateDevice: (id: number, payload: any) => of({ message: 'Updated', device: { id, ...payload } }),
       deleteDevice: () => of({ message: 'Deleted' }),
+      triggerDeviceAction: (id: number, action: string, position?: number) => of({
+        status: 'success',
+        device_id: id,
+        entity_id: 'cover.living_room_blind',
+        action,
+        position: position !== undefined ? position : 100,
+        state: position === 0 ? 'closed' : 'open',
+        message: `Blind set to ${position}%`,
+      }),
     };
 
     mockEventsService = {
@@ -316,5 +333,20 @@ describe('BlindsComponent', () => {
     component.toggleScheduleActive(s1);
     expect(capturedUpdate.id).toBe(1);
     expect(capturedUpdate.payload.is_active).toBe(0);
+  });
+
+  it('should get blind device position and handle slider input and change', () => {
+    const dev = component.blindDevices()[0]; // living room blind
+    expect(component.getDevicePosition(dev)).toBe(100);
+
+    // Mock live input drag (preview)
+    const mockInputEvent = { target: { value: '45' } } as unknown as Event;
+    component.onSliderInput(dev, mockInputEvent);
+    expect(component.getDevicePosition(dev)).toBe(45);
+
+    // Mock change (release slider)
+    const mockChangeEvent = { target: { value: '50' } } as unknown as Event;
+    component.onSliderChange(dev, mockChangeEvent);
+    expect(component.getDevicePosition(dev)).toBe(50);
   });
 });

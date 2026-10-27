@@ -195,7 +195,7 @@ iot_v11/
      production: false,
      backendUrl: '/api/v1',
      apiKey: 'iot-secret-key-change-me-in-production',
-     version: 'v11.0.2',
+     version: 'v11.0.3',
    };
    ```
 

@@ -42,6 +42,7 @@ export class IrrigationComponent implements OnInit {
   readonly loading = signal<boolean>(false);
   readonly errorMessage = signal<string | null>(null);
   readonly successMessage = signal<string | null>(null);
+  readonly operatingDeviceIds = signal<Set<number>>(new Set());
 
   // Active Device selection (null = show all device cards, DeviceItem = show device detail with the 2 tables)
   readonly activeDevice = signal<DeviceItem | null>(null);
@@ -252,6 +253,61 @@ export class IrrigationComponent implements OnInit {
 
   closeDeviceDetail(): void {
     this.activeDevice.set(null);
+  }
+
+  // ==========================================
+  // Manual Device Controls (On/Off)
+  // ==========================================
+  isDeviceOperating(deviceId: number): boolean {
+    return this.operatingDeviceIds().has(deviceId);
+  }
+
+  isDeviceOn(device: DeviceItem): boolean {
+    if (!device || !device.entity_id) return false;
+    const match = this.hassEntities().find((e) => e.entity_id === device.entity_id);
+    return match?.state?.toLowerCase() === 'on';
+  }
+
+  toggleDeviceManual(device: DeviceItem, event: Event): void {
+    if (!device) return;
+    const inputEl = event.target as HTMLInputElement;
+    const targetAction: 'on' | 'off' = inputEl.checked ? 'on' : 'off';
+
+    this.operatingDeviceIds.update((s) => new Set(s).add(device.id));
+
+    this.settingsService.triggerDeviceAction(device.id, targetAction).subscribe({
+      next: (resp) => {
+        this.hassEntities.update((entities) =>
+          entities.map((e) =>
+            e.entity_id === device.entity_id ? { ...e, state: resp.state || targetAction } : e
+          )
+        );
+        this.operatingDeviceIds.update((s) => {
+          const updated = new Set(s);
+          updated.delete(device.id);
+          return updated;
+        });
+        this.successMessage.set(resp.message || `Device '${device.name}' turned ${targetAction.toUpperCase()}`);
+        setTimeout(() => {
+          if (this.successMessage()?.includes(device.name)) {
+            this.successMessage.set(null);
+          }
+        }, 4000);
+      },
+      error: (err) => {
+        this.operatingDeviceIds.update((s) => {
+          const updated = new Set(s);
+          updated.delete(device.id);
+          return updated;
+        });
+        this.errorMessage.set(err.error?.detail || err.message || `Failed to turn ${targetAction.toUpperCase()} device`);
+        this.settingsService.getHomeAssistantEntities().subscribe({
+          next: (r) => this.hassEntities.set(r.entities || []),
+          error: () => {}
+        });
+        setTimeout(() => this.errorMessage.set(null), 5000);
+      }
+    });
   }
 
   getSchedulesForDevice(device: DeviceItem): Schedule[] {

@@ -130,10 +130,11 @@ describe('IrrigationComponent', () => {
     mockSettingsService = {
       getDevices: () => of(mockDevicesResponse),
       getUseCases: () => of(mockUseCasesResponse),
-      getHomeAssistantEntities: () => of({ connected: true, hass_url: '', entities: [], error: null }),
+      getHomeAssistantEntities: () => of({ connected: true, hass_url: '', entities: [{ entity_id: 'switch.garden_irrigation_zone1', friendly_name: 'Garden Zone 1', domain: 'switch', state: 'off' }], error: null }),
       createDevice: (payload: any) => of({ message: 'Created', device: { id: 13, ...payload } }),
       updateDevice: (id: number, payload: any) => of({ message: 'Updated', device: { id, ...payload } }),
       deleteDevice: () => of({ message: 'Deleted' }),
+      triggerDeviceAction: (id: number, action: 'on' | 'off' | 'toggle') => of({ status: 'success', device_id: id, entity_id: 'switch.garden_irrigation_zone1', action: action === 'toggle' ? 'on' : action, state: action === 'toggle' ? 'on' : action, message: `Device turned ${action}` }),
     };
 
     mockEventsService = {
@@ -309,5 +310,22 @@ describe('IrrigationComponent', () => {
     component.toggleScheduleActive(s1);
     expect(capturedUpdate.id).toBe(1);
     expect(capturedUpdate.payload.is_active).toBe(0);
+  });
+
+  it('should evaluate device on/off state and manually toggle device state', () => {
+    const dev = component.irrigationDevices()[0];
+    expect(component.isDeviceOn(dev)).toBe(false);
+
+    // Mock toggle event to ON
+    const mockEventOn = { target: { checked: true } } as unknown as Event;
+    component.toggleDeviceManual(dev, mockEventOn);
+
+    expect(component.isDeviceOn(dev)).toBe(true);
+
+    // Mock toggle event to OFF
+    const mockEventOff = { target: { checked: false } } as unknown as Event;
+    component.toggleDeviceManual(dev, mockEventOff);
+
+    expect(component.isDeviceOn(dev)).toBe(false);
   });
 });

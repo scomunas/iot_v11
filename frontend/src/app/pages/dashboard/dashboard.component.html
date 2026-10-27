@@ -1,4 +1,5 @@
-<div class="dashboard-container">
+<div class="dashboard-page">
+  <!-- Page Header -->
   <header class="page-header">
     <div class="header-titles">
       <div class="title-with-icon">
@@ -12,105 +13,286 @@
         </div>
         <div>
           <h1 class="page-title">Dashboard</h1>
-          <p class="page-subtitle">Real-time status of your IoT home automation system</p>
+          <p class="page-subtitle">Real-time command center for Heating, Blinds, and Irrigation</p>
         </div>
       </div>
     </div>
-    <button class="btn btn-secondary" (click)="refreshBackend()">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-      </svg>
-      Refresh Status
-    </button>
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="loadAllDashboardData()" [disabled]="loading()">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        Refresh
+      </button>
+    </div>
   </header>
 
-  <div class="stats-grid">
-    <!-- Backend Status Card -->
-    <div class="card stat-card" [ngClass]="healthService.status()">
-      <div class="card-header">
-        <span class="card-title">Backend Service</span>
-        <span class="badge" [ngClass]="healthService.status()">
-          <span class="status-dot"></span>
-          {{ healthService.status() | uppercase }}
-        </span>
-      </div>
-      <div class="card-body">
-        @if (healthService.status() === 'online') {
-          <div class="stat-detail-row">
-            <span>Database</span>
-            <span class="tag tag-success">{{ healthService.healthData()?.database }}</span>
-          </div>
-          <div class="stat-detail-row">
-            <span>Scheduler</span>
-            <span class="tag tag-success">{{ healthService.healthData()?.scheduler }}</span>
-          </div>
-          <div class="stat-detail-row">
-            <span>Environment</span>
-            <span class="tag">{{ healthService.healthData()?.environment }}</span>
-          </div>
-        } @else if (healthService.status() === 'checking') {
-          <p class="muted-text">Checking backend connection at http://localhost:8000/health...</p>
-        } @else {
-          <p class="danger-text">Cannot connect to backend: {{ healthService.errorMessage() }}</p>
-          <small class="muted-text">Ensure the backend is running at http://localhost:8000</small>
-        }
-      </div>
-      <div class="card-footer">
-        <small class="muted-text">Last verified: {{ healthService.lastChecked() | date:'shortTime' }}</small>
-      </div>
-    </div>
-
-    <!-- Home Assistant Ready Card -->
-    <div class="card stat-card">
-      <div class="card-header">
-        <span class="card-title">Home Assistant</span>
-        <span class="badge badge-neutral">PENDING</span>
-      </div>
-      <div class="card-body">
-        <p class="card-description">Ready for integration. Devices and state syncing will appear here.</p>
-        <div class="stat-detail-row">
-          <span>Connected Devices</span>
-          <span class="stat-number">--</span>
-        </div>
-      </div>
-      <div class="card-footer">
-        <small class="muted-text">Next integration phase</small>
-      </div>
-    </div>
-
-    <!-- In-Memory Schedules Card -->
-    <div class="card stat-card">
-      <div class="card-header">
-        <span class="card-title">Schedules Engine</span>
-        <span class="badge" [ngClass]="healthService.status() === 'online' ? 'tag-success' : 'badge-neutral'">
-          {{ healthService.status() === 'online' ? 'ACTIVE' : 'STANDBY' }}
-        </span>
-      </div>
-      <div class="card-body">
-        <p class="card-description">In-memory APScheduler backed by local SQLite persistence.</p>
-        <div class="stat-detail-row">
-          <span>Schedule Types</span>
-          <span class="tag">One-Time & Recurrent</span>
-        </div>
-      </div>
-      <div class="card-footer" style="display: flex; justify-content: space-between; align-items: center;">
-        <small class="muted-text">Restores on reboot</small>
-        <a routerLink="/schedules" class="tag" style="color: #60a5fa; cursor: pointer;">Manage &rarr;</a>
-      </div>
-    </div>
-  </div>
-
-  <!-- Quick Info Banner -->
-  <div class="welcome-box">
-    <div class="welcome-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
+  <!-- Alerts -->
+  @if (successMessage()) {
+    <div class="alert alert-success">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
       </svg>
+      <span>{{ successMessage() }}</span>
     </div>
-    <div class="welcome-text">
-      <h3>IoT Management Center</h3>
-      <p>Your backend is running with SQLite database storage and in-memory cron and one-time scheduling.</p>
+  }
+
+  @if (errorMessage()) {
+    <div class="alert alert-danger">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span>{{ errorMessage() }}</span>
+    </div>
+  }
+
+  <!-- Main 3-Card Command Center Grid -->
+  <div class="dashboard-cards-grid">
+    <!-- CARD 1: Heating Card -->
+    <div class="section-card heating-card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-icon-box heating-icon-box">🔥</div>
+          <div>
+            <h2 class="card-title">Heating</h2>
+            <span class="card-subtitle">Climate Control</span>
+          </div>
+        </div>
+        <div class="header-control-wrap">
+          <div class="system-toggle-group" title="Master Heating Power">
+            <label class="switch-control">
+              <input
+                type="checkbox"
+                [checked]="heatingState() === 'on'"
+                (change)="toggleHeatingMaster($event)"
+              />
+              <span class="switch-slider"></span>
+            </label>
+            <span class="system-toggle-label" [class.is-active]="heatingState() === 'on'">
+              {{ heatingState() === 'on' ? 'ACTIVE' : 'OFF' }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <!-- Active Map Indicator -->
+        <div class="feature-block active-map-block">
+          <div class="block-label-row">
+            <span class="block-label">Active Heating Map</span>
+            <span class="badge-count">{{ heatingMapsCount() }} configured</span>
+          </div>
+          <div class="active-map-pill">
+            <span class="map-dot" [class.active-dot]="heatingState() === 'on'"></span>
+            <span class="map-name">{{ activeMapName() }}</span>
+          </div>
+        </div>
+
+        <!-- Temperatures Section -->
+        <div class="feature-block temperatures-block">
+          <div class="block-label-row">
+            <span class="block-label">Temperatures</span>
+            <span class="block-hint">Current vs Map Target</span>
+          </div>
+          @if (temperatureDevices().length === 0) {
+            <p class="empty-hint">No temperature sensors configured</p>
+          } @else {
+            <div class="devices-items-list">
+              @for (tempDev of temperatureDevices(); track tempDev.id) {
+                <div class="temp-device-row" [title]="tempDev.name + (tempDev.entity_id ? ' (' + tempDev.entity_id + ')' : '')">
+                  <span class="device-name">{{ tempDev.name }}</span>
+                  <div class="temp-readings-group">
+                    <div class="temp-box current" title="Current temperature reading">
+                      <span class="temp-box-label">CURRENT</span>
+                      <span class="temp-box-value">{{ formatTemp(tempDev.current_temperature) }} °C</span>
+                    </div>
+                    <div class="temp-box target" title="Target temperature configured in active map ({{ activeMapName() }})">
+                      <span class="temp-box-label">TARGET</span>
+                      <span class="temp-box-value">
+                        @if (getTargetTemp(tempDev.id) !== null) {
+                          {{ formatTemp(getTargetTemp(tempDev.id)) }} °C
+                        } @else {
+                          <span class="no-rule">—</span>
+                        }
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- Summary Row -->
+        <div class="card-summary-row">
+          <div class="summary-pill">
+            <span class="pill-icon">📅</span>
+            <span>{{ calendarSlotsCount() }} Calendar Slots</span>
+          </div>
+          <div class="summary-pill">
+            <span class="pill-icon">🗺️</span>
+            <span>{{ heatingMapsCount() }} Maps</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <a routerLink="/heating" class="btn-card-manage">
+          <span>Manage Heating System</span>
+          <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- CARD 2: Blinds Card -->
+    <div class="section-card blinds-card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-icon-box blinds-icon-box">🪟</div>
+          <div>
+            <h2 class="card-title">Blinds</h2>
+            <span class="card-subtitle">Window Covers</span>
+          </div>
+        </div>
+        <div class="header-control-wrap">
+          <span class="badge-count">{{ blindDevices().length }} blinds</span>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="feature-block devices-list-block">
+          <div class="block-label-row">
+            <span class="block-label">Blinds Controls</span>
+            <span class="block-hint">Adjust position slider</span>
+          </div>
+
+          @if (blindDevices().length === 0) {
+            <p class="empty-hint">No blind devices configured</p>
+          } @else {
+            <div class="devices-items-list">
+              @for (blind of blindDevices(); track blind.id) {
+                <div class="device-row" [title]="blind.name + (blind.entity_id ? ' (' + blind.entity_id + ')' : '')">
+                  <span class="device-name">{{ blind.name }}</span>
+                  <div class="blind-slider-control" title="Adjust position for {{ blind.name }}">
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="5"
+                      [value]="getDevicePosition(blind)"
+                      [disabled]="isDeviceOperating(blind.id)"
+                      (input)="onBlindSliderInput(blind, $event)"
+                      (change)="onBlindSliderChange(blind, $event)"
+                      class="blind-range-slider"
+                    />
+                    <span class="blind-slider-label" [class.is-open]="getDevicePosition(blind) > 0">
+                      {{ getPositionLabel(getDevicePosition(blind)) }}
+                    </span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- Summary Row -->
+        <div class="card-summary-row">
+          <div class="summary-pill">
+            <span class="pill-icon">🕒</span>
+            <span>{{ blindsSchedulesCount() }} Schedules</span>
+          </div>
+          <div class="summary-pill">
+            <span class="pill-icon">⚡</span>
+            <span>{{ blindsEventsCount() }} Events</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <a routerLink="/blinds" class="btn-card-manage">
+          <span>Manage Blinds & Routines</span>
+          <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- CARD 3: Irrigation Card -->
+    <div class="section-card irrigation-card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-icon-box irrigation-icon-box">💧</div>
+          <div>
+            <h2 class="card-title">Irrigation</h2>
+            <span class="card-subtitle">Watering Zones</span>
+          </div>
+        </div>
+        <div class="header-control-wrap">
+          <span class="badge-count">{{ irrigationDevices().length }} zones</span>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="feature-block devices-list-block">
+          <div class="block-label-row">
+            <span class="block-label">Zones Controls</span>
+            <span class="block-hint">Manual on/off switches</span>
+          </div>
+
+          @if (irrigationDevices().length === 0) {
+            <p class="empty-hint">No irrigation zones configured</p>
+          } @else {
+            <div class="devices-items-list">
+              @for (irrig of irrigationDevices(); track irrig.id) {
+                <div class="device-row" [title]="irrig.name + (irrig.entity_id ? ' (' + irrig.entity_id + ')' : '')">
+                  <span class="device-name">{{ irrig.name }}</span>
+                  <div class="device-toggle-group" title="Turn ON/OFF {{ irrig.name }}">
+                    <label class="switch-control">
+                      <input
+                        type="checkbox"
+                        [checked]="isDeviceOn(irrig)"
+                        [disabled]="isDeviceOperating(irrig.id)"
+                        (change)="toggleIrrigationDevice(irrig, $event)"
+                      />
+                      <span class="switch-slider"></span>
+                    </label>
+                    <span class="device-toggle-label" [class.is-active]="isDeviceOn(irrig)">
+                      {{ isDeviceOn(irrig) ? 'ON' : 'OFF' }}
+                    </span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- Summary Row -->
+        <div class="card-summary-row">
+          <div class="summary-pill">
+            <span class="pill-icon">🕒</span>
+            <span>{{ irrigationSchedulesCount() }} Schedules</span>
+          </div>
+          <div class="summary-pill">
+            <span class="pill-icon">⚡</span>
+            <span>{{ irrigationEventsCount() }} Events</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <a routerLink="/irrigation" class="btn-card-manage">
+          <span>Manage Irrigation & Routines</span>
+          <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </a>
+      </div>
     </div>
   </div>
 </div>

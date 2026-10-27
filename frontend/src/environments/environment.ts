@@ -58,7 +58,7 @@ export const environment = {
       localStorage.removeItem('iot_api_key');
     }
   },
-  version: 'v11.0.2',
+  version: 'v11.0.3',
   timezone: 'Europe/Madrid',
   dateFormat: 'dd-MM-yyyy HH:mm',
 };

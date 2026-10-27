@@ -102,6 +102,22 @@
                 </div>
               </div>
               <div class="device-actions" (click)="$event.stopPropagation()">
+                <div class="blind-slider-control" title="Adjust Blind Position">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    [value]="getDevicePosition(device)"
+                    [disabled]="isDeviceOperating(device.id)"
+                    (input)="onSliderInput(device, $event)"
+                    (change)="onSliderChange(device, $event)"
+                    class="blind-range-slider"
+                  />
+                  <span class="blind-slider-label" [class.is-open]="getDevicePosition(device) > 0">
+                    {{ getPositionLabel(getDevicePosition(device)) }}
+                  </span>
+                </div>
                 <button
                   class="icon-action-btn edit"
                   (click)="openEditDeviceModal(device)"
@@ -238,6 +254,22 @@
             </div>
           </div>
           <div class="banner-actions">
+            <div class="blind-slider-control banner-slider" title="Adjust Blind Position">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                [value]="getDevicePosition(currentDevice)"
+                [disabled]="isDeviceOperating(currentDevice.id)"
+                (input)="onSliderInput(currentDevice, $event)"
+                (change)="onSliderChange(currentDevice, $event)"
+                class="blind-range-slider"
+              />
+              <span class="blind-slider-label" [class.is-open]="getDevicePosition(currentDevice) > 0">
+                {{ getPositionLabel(getDevicePosition(currentDevice)) }}
+              </span>
+            </div>
             <button class="btn btn-secondary btn-sm" (click)="openEditDeviceModal(currentDevice)">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
