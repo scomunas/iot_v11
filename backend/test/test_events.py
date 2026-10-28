@@ -184,6 +184,50 @@ def test_events_endpoint():
         client.delete(f"/event-definitions/{nh_def_id}", headers=headers)
         print("PASS: Cleaned up holiday test event definitions")
 
+        # 10. Test Event Parameter Matching (e.g. rain start vs rain stop)
+        rain_start_payload = {
+            "name": "Rain Start Action",
+            "type": "rain_test",
+            "parameter": "start",
+            "use_case": "test_create_file",
+            "is_active": 1,
+        }
+        resp = client.post("/event-definitions", json=rain_start_payload, headers=headers)
+        assert resp.status_code == 201
+        rain_start_id = resp.json()["event_definition"]["id"]
+
+        rain_stop_payload = {
+            "name": "Rain Stop Action",
+            "type": "rain_test",
+            "parameter": "stop",
+            "use_case": "test_create_file",
+            "is_active": 1,
+        }
+        resp = client.post("/event-definitions", json=rain_stop_payload, headers=headers)
+        assert resp.status_code == 201
+        rain_stop_id = resp.json()["event_definition"]["id"]
+
+        # Trigger rain_test with parameter "stop"
+        resp = client.post("/events", json={"type": "rain_test", "parameter": "stop"}, headers=headers)
+        assert resp.status_code == 200
+        trig = resp.json()["triggered_definitions"]
+        assert any(d["definition_id"] == rain_stop_id and d["status"] == "executed" for d in trig), "Rain stop should execute"
+        assert not any(d["definition_id"] == rain_start_id for d in trig), "Rain start must NOT execute on rain stop"
+        print("PASS: Rain stop triggered only the rain stop definition; rain start was skipped")
+
+        # Trigger rain_test with parameter "start"
+        resp = client.post("/events", json={"type": "rain_test", "parameter": "start"}, headers=headers)
+        assert resp.status_code == 200
+        trig = resp.json()["triggered_definitions"]
+        assert any(d["definition_id"] == rain_start_id and d["status"] == "executed" for d in trig), "Rain start should execute"
+        assert not any(d["definition_id"] == rain_stop_id for d in trig), "Rain stop must NOT execute on rain start"
+        print("PASS: Rain start triggered only the rain start definition; rain stop was skipped")
+
+        # Clean up rain test definitions
+        client.delete(f"/event-definitions/{rain_start_id}", headers=headers)
+        client.delete(f"/event-definitions/{rain_stop_id}", headers=headers)
+        print("PASS: Cleaned up rain test definitions")
+
 
 if __name__ == "__main__":
     test_events_endpoint()

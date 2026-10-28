@@ -1108,6 +1108,20 @@ async def dispatch_event_triggers(event_type: str, parameter: str = "") -> List[
         use_case = defn["use_case"]
         data = defn.get("data", "{}")
         holiday_setting = defn.get("holiday") or "all_days"
+        defn_param = (defn.get("parameter") or "").strip()
+        incoming_param = (parameter or "").strip()
+
+        # Check parameter filter:
+        # If the definition specifies a parameter, it must match the incoming event's parameter.
+        if defn_param and defn_param.lower() != incoming_param.lower():
+            logger.info(
+                "[EVENT TRIGGER] Skipping event definition #%s ('%s'): parameter mismatch (expected '%s', got '%s')",
+                def_id,
+                name,
+                defn_param,
+                incoming_param,
+            )
+            continue
 
         # Check holiday / weekend filter
         is_today_holiday = is_holiday_or_weekend()
