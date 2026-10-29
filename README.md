@@ -1,4 +1,4 @@
-# IoT Home Automation System (v11)
+﻿# IoT Home Automation System (v11)
 
 A modular, lightweight, and modern home automation platform designed for low-latency task scheduling, autonomous climate control, and seamless integration with **Home Assistant** and **Telegram**.
 
@@ -195,7 +195,7 @@ iot_v11/
      production: false,
      backendUrl: '/api/v1',
      apiKey: 'iot-secret-key-change-me-in-production',
-     version: 'v11.0.4',
+     version: 'v11.1.0',
    };
    ```
 

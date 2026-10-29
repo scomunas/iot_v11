@@ -9,9 +9,7 @@
           </svg>
         </div>
         <div>
-          <div class="title-badge-row">
-            <h1 class="page-title">Heating</h1>
-          </div>
+          <h1 class="page-title">Heating</h1>
           <p class="page-subtitle">Heating temperature maps, master control, and automatic map switching routines</p>
         </div>
       </div>
@@ -382,7 +380,7 @@
         </div>
 
         <div class="card-header-actions">
-          <button class="btn btn-sm btn-primary" (click)="openCreateMapModal()">
+          <button class="btn btn-primary" (click)="openCreateMapModal()">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
@@ -1175,3 +1173,118 @@
   (confirmed)="handleConfirmModal()"
   (cancelled)="closeConfirmModal()"
 />
+
+
+<!-- MODAL: HEATING GLOBAL SETTINGS -->
+@if (isSettingsModalOpen()) {
+  <div class="modal-overlay" (click)="closeHeatingSettingsModal()">
+    <div class="modal-card modal-md" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-with-icon">
+          <div class="modal-icon-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </div>
+          <div>
+            <h3>Heating Global Settings</h3>
+            <p class="modal-subtitle">Configure Home Assistant master helper entity and check interval</p>
+          </div>
+        </div>
+        <button type="button" class="btn-close" (click)="closeHeatingSettingsModal()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group mb-3">
+          <label class="form-label" for="helperEntityInput">Home Assistant Master Helper Entity</label>
+          <select
+            id="helperEntityInput"
+            class="form-control"
+            [(ngModel)]="formHelperEntity"
+          >
+            <option value="">-- No Helper Entity Configured --</option>
+            @if (formHelperEntity && !isEntityInHassList(formHelperEntity)) {
+              <option [value]="formHelperEntity">{{ formHelperEntity }} (Configured)</option>
+            }
+            @for (ent of hassEntities(); track ent.entity_id) {
+              <option [value]="ent.entity_id">{{ ent.friendly_name }} ({{ ent.entity_id }})</option>
+            }
+          </select>
+          <small class="form-hint" style="display: block; margin-top: 6px; font-size: 0.8rem; color: var(--text-muted, #94a3b8);">
+            This entity defines if the heating system is ON or OFF. Starting/stopping heating in this UI updates this helper in Home Assistant, and external changes in Home Assistant notify the system with an event to fire <code>start_heating</code>. Heating state is not stored in DB, but dynamically queried from this helper.
+          </small>
+        </div>
+
+        <div class="form-group mb-3">
+          <label class="form-label">Heaters / Actuators (Fired by Heating Maps)</label>
+          <div class="chips-list mb-2" style="display: flex; flex-wrap: wrap; gap: 8px;">
+            @for (h of formHeaterEntities; track h) {
+              <span class="heater-chip" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 9999px; background: rgba(249, 115, 22, 0.12); border: 1px solid rgba(249, 115, 22, 0.35); color: #fed7aa; font-family: monospace; font-size: 0.85rem;">
+                <span>🔥 {{ h }}</span>
+                <button
+                  type="button"
+                  style="background: none; border: none; color: rgba(254, 215, 170, 0.7); cursor: pointer; padding: 0 0 0 4px; font-size: 1.1rem; line-height: 1;"
+                  (click)="removeModalHeater(h)"
+                  title="Remove"
+                >&times;</button>
+              </span>
+            } @empty {
+              <small class="text-muted" style="color: var(--text-muted, #94a3b8);">No heater entities configured. Heat map regulation will evaluate sensors without activating physical heaters.</small>
+            }
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 8px;">
+            <select
+              class="form-control"
+              [(ngModel)]="newModalHeaterId"
+              style="flex: 1;"
+            >
+              <option value="">-- Choose a Heater / Actuator --</option>
+              @for (ent of hassEntities(); track ent.entity_id) {
+                <option [value]="ent.entity_id" [disabled]="formHeaterEntities.includes(ent.entity_id)">
+                  {{ ent.friendly_name }} ({{ ent.entity_id }})
+                </option>
+              }
+            </select>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              (click)="addModalHeater(newModalHeaterId)"
+              [disabled]="!newModalHeaterId || formHeaterEntities.includes(newModalHeaterId.trim())"
+            >
+              + Add Heater
+            </button>
+          </div>
+          <small class="form-hint" style="display: block; margin-top: 6px; font-size: 0.8rem; color: var(--text-muted, #94a3b8);">
+            These Home Assistant entities are turned ON when heating is required by temperature map rules, and turned OFF when satisfied.
+          </small>
+        </div>
+
+        <div class="form-group mb-3">
+          <label class="form-label" for="heatingCheckInterval">Check Interval (Minutes)</label>
+          <input
+            id="heatingCheckInterval"
+            type="number"
+            class="form-control"
+            min="1"
+            max="720"
+            [(ngModel)]="formIntervalMinutes"
+          />
+          <small class="form-hint" style="display: block; margin-top: 6px; font-size: 0.8rem; color: var(--text-muted, #94a3b8);">
+            Periodic evaluation interval of temperature sensors against active heating map (default: 5 min).
+          </small>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" (click)="closeHeatingSettingsModal()" [disabled]="isSavingHeatingSettings()">
+          Cancel
+        </button>
+        <button type="button" class="btn btn-primary" (click)="saveHeatingGlobalSettings()" [disabled]="isSavingHeatingSettings()">
+          {{ isSavingHeatingSettings() ? 'Saving...' : 'Save Settings' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

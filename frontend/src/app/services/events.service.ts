@@ -13,6 +13,8 @@ export interface EventDefinition {
   holiday?: 'all_days' | 'holiday' | 'not_holiday' | string;
   notify?: number;
   notification_message?: string;
+  speak?: number; // 1 to broadcast speech announcement, 0 otherwise
+  speak_message?: string; // Optional custom speech message override
   is_active: number;
   created_at: string;
 }
@@ -30,6 +32,8 @@ export interface EventDefinitionPayload {
   holiday?: 'all_days' | 'holiday' | 'not_holiday' | string;
   notify?: number;
   notification_message?: string;
+  speak?: number;
+  speak_message?: string;
   is_active?: number;
 }
 

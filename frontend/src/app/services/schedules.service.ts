@@ -13,6 +13,8 @@ export interface Schedule {
   data?: string; // JSON parameters for task execution
   notify?: number; // 1 to notify, 0 otherwise
   notification_message?: string; // Optional custom notification message override
+  speak?: number; // 1 to broadcast speech announcement, 0 otherwise
+  speak_message?: string; // Optional custom speech message override
   block?: number; // 1 if blocked/protected from changes or deletion, 0 otherwise
   created_at: string;
 }
@@ -37,6 +39,8 @@ export interface SchedulePayload {
   data?: string; // JSON parameters for task execution
   notify?: number;
   notification_message?: string;
+  speak?: number;
+  speak_message?: string;
   block?: number;
 }
 

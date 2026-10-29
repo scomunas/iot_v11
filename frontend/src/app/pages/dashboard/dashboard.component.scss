@@ -1,7 +1,7 @@
 .dashboard-page {
-  padding: 1.5rem;
-  max-width: 1400px;
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 /* ───── Page Header ───── */
@@ -9,7 +9,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.75rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
   gap: 1rem;
   flex-wrap: wrap;
 
@@ -125,18 +126,12 @@
   }
 }
 
-/* ───── Dashboard 3-Cards Grid ───── */
+/* ───── Dashboard 2-Cards Grid ───── */
 .dashboard-cards-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 1.5rem;
   align-items: stretch;
-}
-
-@media (max-width: 1200px) {
-  .dashboard-cards-grid {
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  }
 }
 
 /* ───── Section Card ───── */
@@ -162,7 +157,11 @@
   }
 
   &.heating-card::before {
-    background: linear-gradient(90deg, #ea580c, #ef4444);
+    background: linear-gradient(90deg, #ea580c, #f97316);
+  }
+
+  &.alarm-card::before {
+    background: linear-gradient(90deg, #dc2626, #f43f5e);
   }
 
   &.blinds-card::before {
@@ -204,8 +203,13 @@
       flex-shrink: 0;
 
       &.heating-icon-box {
-        background: rgba(234, 88, 12, 0.12);
-        border: 1px solid rgba(234, 88, 12, 0.25);
+        background: rgba(249, 115, 22, 0.15);
+        border: 1px solid rgba(249, 115, 22, 0.3);
+      }
+
+      &.alarm-icon-box {
+        background: rgba(220, 38, 38, 0.15);
+        border: 1px solid rgba(220, 38, 38, 0.3);
       }
 
       &.blinds-icon-box {
@@ -318,6 +322,184 @@
     font-size: 0.9375rem;
     font-weight: 600;
     color: var(--text-primary);
+  }
+}
+
+/* ───── Alarm Card Blocks ───── */
+.active-alarm-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0.5rem 0.85rem;
+  border-radius: 0.5rem;
+
+  .map-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #64748b;
+    flex-shrink: 0;
+    transition: all 0.25s ease;
+
+    &.active-dot {
+      background: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+    }
+  }
+
+  .alarm-mode-name {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+}
+
+.alarm-rule-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+
+  &:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
+  .rule-sensor-info {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+    flex: 1;
+
+    .sensor-icon {
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+
+    .device-name {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .device-type-badge-mini {
+      font-size: 0.625rem;
+      font-weight: 700;
+      padding: 0.1rem 0.35rem;
+      border-radius: 0.25rem;
+      background: rgba(148, 163, 184, 0.15);
+      color: #cbd5e1;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      flex-shrink: 0;
+
+      &.door {
+        background: rgba(20, 184, 166, 0.15);
+        color: #2dd4bf;
+        border-color: rgba(20, 184, 166, 0.3);
+      }
+      &.movement {
+        background: rgba(168, 85, 247, 0.15);
+        color: #c084fc;
+        border-color: rgba(168, 85, 247, 0.3);
+      }
+      &.presence {
+        background: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border-color: rgba(16, 185, 129, 0.3);
+      }
+      &.temperature {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+        border-color: rgba(239, 68, 68, 0.3);
+      }
+    }
+  }
+
+  .alarm-readings-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+
+    .alarm-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0.25rem 0.55rem;
+      border-radius: 0.4rem;
+      min-width: 62px;
+      line-height: 1.15;
+
+      .alarm-box-label {
+        font-size: 0.575rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-bottom: 0.15rem;
+      }
+
+      .alarm-box-value {
+        font-size: 0.8rem;
+        font-weight: 700;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        white-space: nowrap;
+
+        .window-unit {
+          font-size: 0.65rem;
+          font-weight: 500;
+          opacity: 0.8;
+        }
+      }
+
+      &.count {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: var(--text-secondary);
+
+        .alarm-box-label {
+          color: var(--text-muted);
+        }
+
+        &.has-hits {
+          background: rgba(245, 158, 11, 0.15);
+          border-color: rgba(245, 158, 11, 0.4);
+          color: #fbbf24;
+
+          .alarm-box-label {
+            color: #fde68a;
+          }
+        }
+
+        &.is-exceeded {
+          background: rgba(239, 68, 68, 0.2);
+          border-color: rgba(239, 68, 68, 0.5);
+          color: #f87171;
+          box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+
+          .alarm-box-label {
+            color: #fca5a5;
+          }
+        }
+      }
+
+      &.target {
+        background: rgba(99, 102, 241, 0.1);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        color: #a5b4fc;
+
+        .alarm-box-label {
+          color: #c7d2fe;
+        }
+      }
+    }
   }
 }
 
@@ -455,6 +637,12 @@
 
     .pill-icon {
       font-size: 0.85rem;
+    }
+
+    &.is-warning {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
     }
   }
 }
@@ -675,14 +863,13 @@
 }
 
 /* ───── Responsive Mobile Adjustments ───── */
-@media (max-width: 768px) {
-  .dashboard-page {
-    padding: 1rem;
-  }
-
+@media (max-width: 900px) {
   .dashboard-cards-grid {
     grid-template-columns: 1fr;
   }
+}
+
+@media (max-width: 768px) {
 
   .device-row {
     flex-direction: column;
@@ -714,6 +901,21 @@
       justify-content: space-between;
 
       .temp-box {
+        flex: 1;
+      }
+    }
+  }
+
+  .alarm-rule-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+
+    .alarm-readings-group {
+      width: 100%;
+      justify-content: space-between;
+
+      .alarm-box {
         flex: 1;
       }
     }

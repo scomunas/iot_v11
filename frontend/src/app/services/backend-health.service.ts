@@ -9,6 +9,7 @@ export interface HealthResponse {
   database?: string;
   scheduler?: string;
   homeassistant?: string;
+  telegram?: string;
 }
 
 export type HealthStatus = 'checking' | 'online' | 'offline';
@@ -39,6 +40,12 @@ export class BackendHealthService {
   readonly homeAssistantStatus = computed<HealthStatus>(() => {
     if (this.status() === 'checking') return 'checking';
     if (this.healthData()?.homeassistant === 'connected') return 'online';
+    return 'offline';
+  });
+
+  readonly telegramStatus = computed<HealthStatus>(() => {
+    if (this.status() === 'checking') return 'checking';
+    if (this.healthData()?.telegram === 'connected') return 'online';
     return 'offline';
   });
 

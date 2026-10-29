@@ -302,6 +302,7 @@
                     <th>Frequency</th>
                     <th>Duration</th>
                     <th>Notify</th>
+                    <th>Speak</th>
                     <th>Next Run</th>
                     <th>Status</th>
                     <th class="actions-col">Actions</th>
@@ -320,6 +321,13 @@
                       <td class="notify-cell">
                         @if (sch.notify) {
                           <span class="badge badge-notify" [title]="sch.notification_message || 'Standard notification'">🔔 Yes</span>
+                        } @else {
+                          <span class="text-muted">—</span>
+                        }
+                      </td>
+                      <td class="speak-cell">
+                        @if (sch.speak) {
+                          <span class="badge badge-speak" [title]="sch.speak_message || 'Standard speech announcement'">📢 Yes</span>
                         } @else {
                           <span class="text-muted">—</span>
                         }
@@ -399,6 +407,7 @@
                     <th>Duration</th>
                     <th>Holiday</th>
                     <th>Notify</th>
+                    <th>Speak</th>
                     <th>Status</th>
                     <th class="actions-col">Actions</th>
                   </tr>
@@ -429,6 +438,13 @@
                       <td class="notify-cell">
                         @if (ev.notify) {
                           <span class="badge badge-notify" [title]="ev.notification_message || 'Standard notification'">🔔 Yes</span>
+                        } @else {
+                          <span class="text-muted">—</span>
+                        }
+                      </td>
+                      <td class="speak-cell">
+                        @if (ev.speak) {
+                          <span class="badge badge-speak" [title]="ev.speak_message || 'Standard speech announcement'">📢 Yes</span>
                         } @else {
                           <span class="text-muted">—</span>
                         }
@@ -659,6 +675,35 @@
             </div>
           }
 
+          <!-- Speaker System Option -->
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                class="form-checkbox"
+                [checked]="formScheduleSpeak === 1"
+                (change)="formScheduleSpeak = $any($event.target).checked ? 1 : 0"
+              />
+              <span class="checkbox-text">📢 Speak announcement on execution (Speaker System)</span>
+            </label>
+          </div>
+
+          @if (formScheduleSpeak === 1) {
+            <div class="form-group">
+              <label class="form-label" for="sch-irrigation-speak-msg">Custom Speech Message (Optional)</label>
+              <input
+                id="sch-irrigation-speak-msg"
+                type="text"
+                class="form-control"
+                [(ngModel)]="formScheduleSpeakMessage"
+                placeholder="e.g. Garden irrigation cycle completed"
+              />
+              <span class="form-hint">
+                Leave blank to use the standard message: <code>Schedule 'Auto - Irrigation - {{ activeDevice()?.name }}' executed successfully (Use case: {{ irrigationUseCase()?.name || 'start_irrigation' }})</code>
+              </span>
+            </div>
+          }
+
           <!-- Active Status -->
           <div class="form-group">
             <label class="checkbox-label">
@@ -827,6 +872,35 @@
                 type="text"
                 class="form-control"
                 [(ngModel)]="formEventNotificationMessage"
+                placeholder="e.g. Irrigation started on event"
+              />
+              <span class="form-hint">
+                Leave blank to use the standard message: <code>Event 'Auto - Irrigation - {{ activeDevice()?.name }}' triggered [{{ formEventType }}{{ formEventParameter ? ': ' + formEventParameter : '' }}] -> Use case: {{ irrigationUseCase()?.name || 'start_irrigation' }}</code>
+              </span>
+            </div>
+          }
+
+          <!-- Speaker System Option -->
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                class="form-checkbox"
+                [checked]="formEventSpeak === 1"
+                (change)="formEventSpeak = $any($event.target).checked ? 1 : 0"
+              />
+              <span class="checkbox-text">📢 Speak announcement on trigger (Speaker System)</span>
+            </label>
+          </div>
+
+          @if (formEventSpeak === 1) {
+            <div class="form-group">
+              <label class="form-label" for="ev-irrigation-speak-msg">Custom Speech Message (Optional)</label>
+              <input
+                id="ev-irrigation-speak-msg"
+                type="text"
+                class="form-control"
+                [(ngModel)]="formEventSpeakMessage"
                 placeholder="e.g. Irrigation started on event"
               />
               <span class="form-hint">

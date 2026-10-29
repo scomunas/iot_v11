@@ -168,6 +168,7 @@
             <th>Trigger Specification</th>
             <th>Use Case</th>
             <th>Notify</th>
+            <th>Speak</th>
             <th>Lock</th>
             <th class="sortable-th" (click)="toggleSort('next_run')" title="Click to sort by Next Run Time">
               <div class="th-content">
@@ -206,6 +207,13 @@
               <td>
                 @if (schedule.notify) {
                   <span class="badge badge-notify" [title]="schedule.notification_message || 'Standard notification on completion'">🔔 Yes</span>
+                } @else {
+                  <span class="text-muted">—</span>
+                }
+              </td>
+              <td>
+                @if (schedule.speak) {
+                  <span class="badge badge-speak" [title]="schedule.speak_message || 'Standard speech announcement on execution'">📢 Yes</span>
                 } @else {
                   <span class="text-muted">—</span>
                 }
@@ -304,7 +312,19 @@
               </div>
               <div class="sc-row">
                 <span class="sc-label">Notify</span>
-                <span>{{ schedule.notify ? '🔔 Yes' : '—' }}</span>
+                @if (schedule.notify) {
+                  <span class="badge badge-notify" [title]="schedule.notification_message || 'Standard notification'">🔔 Yes</span>
+                } @else {
+                  <span class="text-muted">—</span>
+                }
+              </div>
+              <div class="sc-row">
+                <span class="sc-label">Speak</span>
+                @if (schedule.speak) {
+                  <span class="badge badge-speak" [title]="schedule.speak_message || 'Standard speech announcement'">📢 Yes</span>
+                } @else {
+                  <span class="text-muted">—</span>
+                }
               </div>
               <div class="sc-row">
                 <span class="sc-label">Lock</span>
@@ -549,6 +569,35 @@
                 type="text"
                 class="form-control"
                 [(ngModel)]="formNotificationMessage"
+                placeholder="e.g. Watering cycle executed for garden"
+              />
+              <span class="form-hint">
+                Leave blank to use the standard message: <code>Schedule '{{ formName || 'Schedule' }}' executed successfully (Use case: {{ formUseCase || 'use_case' }})</code>
+              </span>
+            </div>
+          }
+
+          <!-- Speaker System Option -->
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                class="form-checkbox"
+                [checked]="formSpeak === 1"
+                (change)="formSpeak = $any($event.target).checked ? 1 : 0"
+              />
+              <span class="checkbox-text">📢 Speak announcement on execution (Speaker System)</span>
+            </label>
+          </div>
+
+          @if (formSpeak === 1) {
+            <div class="form-group">
+              <label class="form-label" for="schedule-speak-msg">Custom Speech Message (Optional)</label>
+              <input
+                id="schedule-speak-msg"
+                type="text"
+                class="form-control"
+                [(ngModel)]="formSpeakMessage"
                 placeholder="e.g. Watering cycle executed for garden"
               />
               <span class="form-hint">

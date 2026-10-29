@@ -77,6 +77,19 @@
       </a>
 
       <a
+        routerLink="/alarm"
+        routerLinkActive="active"
+        class="nav-item"
+        (click)="closeMobileSidebar()"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+        </svg>
+        <span class="nav-label">Alarm</span>
+      </a>
+
+      <a
         routerLink="/blinds"
         routerLinkActive="active"
         class="nav-item"
@@ -199,6 +212,10 @@
           <div class="status-item">
             <span class="status-dot" [ngClass]="healthService.homeAssistantStatus()"></span>
             <span class="status-name">Home Assistant</span>
+          </div>
+          <div class="status-item">
+            <span class="status-dot" [ngClass]="healthService.telegramStatus()"></span>
+            <span class="status-name">Telegram</span>
           </div>
         </div>
       </div>

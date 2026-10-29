@@ -1,0 +1,479 @@
+<div class="alarm-page">
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="header-titles">
+      <div class="title-with-icon">
+        <div class="header-icon-box alarm-icon-box">
+          <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="page-title">Alarm</h1>
+          <p class="page-subtitle">
+            Sensor event threshold monitoring, memory frequency detector, and automated Telegram & voice announcements
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="loadAllData()" [disabled]="loading()">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6" />
+          <path d="M1 20v-6h6" />
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        Refresh
+      </button>
+
+      <!-- Master System Controls (Integrated at top-right of the header) -->
+      <div class="header-system-controls">
+        <div class="system-toggle-group">
+          <label class="switch-control" title="Toggle Alarm System State">
+            <input
+              type="checkbox"
+              [checked]="configEnabled"
+              (change)="onToggleAlarm($event)"
+              [disabled]="loading() || togglingAlarm()"
+            />
+            <span class="switch-slider"></span>
+          </label>
+          <span class="system-toggle-label" [class.is-active]="configEnabled">
+            {{ configEnabled ? 'Active' : 'Deactivated' }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Feedback Notifications -->
+  @if (successMessage()) {
+    <div class="alert alert-success">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      <span>{{ successMessage() }}</span>
+    </div>
+  }
+
+  @if (errorMessage()) {
+    <div class="alert alert-error">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span>{{ errorMessage() }}</span>
+    </div>
+  }
+
+  
+
+  <!-- SECTION 2: Alarm Sensor Rules Card -->
+  <div class="card rules-card">
+    <div class="card-header">
+      <div class="card-header-main">
+        <div class="card-icon-badge-row">
+          <div class="card-icon rules-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </div>
+          <div>
+            <div class="card-title-group">
+              <h2 class="card-title">Alarm Sensor Rules</h2>
+              <span class="badge badge-count">{{ rules().length }} configured</span>
+            </div>
+            <p class="card-subtitle">
+              Configured event definitions evaluating threshold frequency per sensor. Stored in system events.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-header-actions">
+        <button class="btn btn-primary" (click)="openCreateRuleModal()">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          Add Alarm Rule
+        </button>
+      </div>
+    </div>
+
+    @if (loading() && rules().length === 0) {
+      <div class="empty-state">
+        <div class="spinner"></div>
+        <p>Loading alarm rules...</p>
+      </div>
+    }
+
+    @if (!loading() && rules().length === 0) {
+      <div class="empty-state">
+        <h3>No alarm rules configured</h3>
+        <p>Define your first sensor rule to monitor activity frequency and trigger notifications.</p>
+        <button class="btn btn-primary" (click)="openCreateRuleModal()">
+          Add Alarm Rule
+        </button>
+      </div>
+    }
+
+    @if (rules().length > 0) {
+      <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Monitored Sensor</th>
+                <th>Threshold Condition</th>
+                <th>Notify</th>
+                <th>Speak Configuration</th>
+                <th>Calendar</th>
+                <th class="actions-col">Manage</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (rule of rules(); track rule.id) {
+                <tr>
+                  <td class="sensor-col">
+                    <div class="sensor-cell">
+                      <span class="device-name">{{ getDeviceName(parseRuleData(rule.data).entity) }}</span>
+                      <span class="device-type-badge" [ngClass]="getDeviceType(parseRuleData(rule.data).entity)">
+                        <span class="type-icon">{{ getDeviceTypeIcon(getDeviceType(parseRuleData(rule.data).entity)) }}</span>
+                        <span class="type-name">{{ getDeviceType(parseRuleData(rule.data).entity) | uppercase }}</span>
+                      </span>
+                    </div>
+                  </td>
+                  <td class="threshold-col">
+                    <span class="threshold-badge">
+                      <strong>&gt; {{ parseRuleData(rule.data).trigger }}</strong> events in
+                      <strong>{{ parseRuleData(rule.data).seconds }}s</strong>
+                    </span>
+                  </td>
+                  <td class="notify-col">
+                    @if (parseRuleData(rule.data).notification) {
+                      <span class="badge badge-notify" title="Notification enabled on alarm">🔔 Notify</span>
+                    } @else {
+                      <span class="text-muted">-</span>
+                    }
+                  </td>
+                  <td class="speak-col">
+                    @if (parseRuleData(rule.data).speak) {
+                      <span class="badge badge-speak" title="Speaker announcement enabled on alarm">📢 Enabled</span>
+                    } @else {
+                      <span class="text-muted">-</span>
+                    }
+                  </td>
+                  <td class="holiday-col">
+                    <span class="badge" [class.badge-holiday]="rule.holiday === 'holiday'" [class.badge-workdays]="rule.holiday === 'not_holiday'" [class.badge-alldays]="!rule.holiday || rule.holiday === 'all_days'">
+                      {{ getHolidayLabel(rule.holiday) }}
+                    </span>
+                  </td>
+                  <td class="actions-col">
+                    <div class="action-buttons-row">
+                      <button
+                        class="icon-btn edit-btn"
+                        (click)="openEditRuleModal(rule)"
+                        title="Edit alarm rule"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+
+                      <button
+                        class="icon-btn delete-btn"
+                        (click)="openDeleteRuleModal(rule)"
+                        title="Delete alarm rule"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Mobile Cards View -->
+        <div class="mobile-rules-list">
+          @for (rule of rules(); track rule.id) {
+            <div class="mobile-rule-card">
+              <div class="m-card-header">
+                <div class="m-sensor-wrap">
+                  <span class="m-device-name">{{ getDeviceName(parseRuleData(rule.data).entity) }}</span>
+                  <span class="device-type-badge" [ngClass]="getDeviceType(parseRuleData(rule.data).entity)">
+                    <span class="type-icon">{{ getDeviceTypeIcon(getDeviceType(parseRuleData(rule.data).entity)) }}</span>
+                    <span class="type-name">{{ getDeviceType(parseRuleData(rule.data).entity) | uppercase }}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div class="m-card-body">
+                <div class="m-info-row">
+                  <span class="m-label">Threshold:</span>
+                  <span class="threshold-badge">
+                    &gt; {{ parseRuleData(rule.data).trigger }} in {{ parseRuleData(rule.data).seconds }}s
+                  </span>
+                </div>
+                <div class="m-info-row">
+                  <span class="m-label">Notification:</span>
+                  @if (parseRuleData(rule.data).notification) {
+                    <span class="badge badge-notify">🔔 Notify</span>
+                  } @else {
+                    <span class="text-muted">-</span>
+                  }
+                </div>
+                <div class="m-info-row">
+                  <span class="m-label">Speak:</span>
+                  @if (parseRuleData(rule.data).speak) {
+                    <span class="badge badge-speak">📢 Enabled</span>
+                  } @else {
+                    <span class="text-muted">-</span>
+                  }
+                </div>
+                <div class="m-info-row">
+                  <span class="m-label">Calendar:</span>
+                  <span class="badge badge-alldays">{{ getHolidayLabel(rule.holiday) }}</span>
+                </div>
+              </div>
+
+              <div class="m-card-footer">
+                <button class="btn btn-secondary btn-sm" (click)="openEditRuleModal(rule)">Edit</button>
+                <button class="btn btn-danger-outline btn-sm" (click)="openDeleteRuleModal(rule)">Delete</button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+  <!-- SECTION 3: In-Memory Events History Card -->
+  <div class="card history-card">
+    <div class="card-header">
+      <div class="card-header-main">
+        <div class="card-icon-badge-row">
+          <div class="card-icon memory-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
+          </div>
+          <div>
+            <div class="card-title-group">
+              <h2 class="card-title">Real-Time Sensor Memory Log</h2>
+              <span class="badge badge-count">{{ history().length }} events in active window</span>
+            </div>
+            <p class="card-subtitle">
+              Live in-memory sensor hits currently tracked by the <code>check_alarm</code> evaluator.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-header-actions">
+        <button
+          class="btn btn-secondary btn-sm"
+          (click)="clearHistory()"
+          [disabled]="clearingHistory() || history().length === 0"
+        >
+          @if (clearingHistory()) {
+            <span class="spinner-sm"></span>
+            <span>Clearing...</span>
+          } @else {
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+            </svg>
+            <span>Clear Memory</span>
+          }
+        </button>
+      </div>
+    </div>
+
+    <div class="card-body">
+      @if (history().length === 0) {
+        <div class="empty-history-hint">
+          <span>No recent events in memory. When sensors trigger events, they appear here in real-time.</span>
+        </div>
+      } @else {
+        <div class="history-list">
+          @for (ev of history(); track ev.date + ev.entity) {
+            <div class="history-item">
+              <div class="hist-left">
+                <span class="hist-dot"></span>
+                <span class="hist-device-name">{{ getDeviceName(ev.entity) }}</span>
+                <span class="device-type-badge" [ngClass]="getDeviceType(ev.entity)">
+                  <span class="type-icon">{{ getDeviceTypeIcon(getDeviceType(ev.entity)) }}</span>
+                  <span class="type-name">{{ getDeviceType(ev.entity) | uppercase }}</span>
+                </span>
+                @if (getDeviceName(ev.entity) !== ev.entity) {
+                  <code class="hist-entity">{{ ev.entity }}</code>
+                }
+              </div>
+              <div class="hist-right">
+                <span class="hist-date-label">Date Received:</span>
+                <span class="hist-date">{{ ev.date | date:'yyyy-MM-dd HH:mm:ss' }}</span>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- MODAL: Add / Edit Alarm Rule -->
+  @if (isRuleModalOpen()) {
+    <div class="modal-backdrop" (click)="closeRuleModal()">
+      <div class="modal-container" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-title-row">
+            <div class="modal-icon alarm-modal-icon">🚨</div>
+            <div>
+              <h2 class="modal-title">
+                {{ ruleModalMode() === 'create' ? 'Create Alarm Rule' : 'Edit Alarm Rule' }}
+              </h2>
+              <p class="modal-subtitle">Configure sensor threshold rule stored as an event definition.</p>
+            </div>
+          </div>
+          <button class="modal-close-btn" (click)="closeRuleModal()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="modal-form">
+            <!-- Monitored Sensor from Devices (Movement, Presence, Door) -->
+            <div class="form-group">
+              <label class="form-label">
+                Sensor (Configured Movement, Presence, or Door Device) *
+              </label>
+              @if (sensorDevices().length > 0) {
+                <select
+                  class="form-control"
+                  [(ngModel)]="formRuleEntity"
+                  (change)="onEntitySelectChange()"
+                >
+                  <option value="">-- Choose Configured Sensor Device --</option>
+                  @for (dev of sensorDevices(); track dev.id) {
+                    <option [value]="dev.entity_id">
+                      {{ dev.name }} ({{ dev.type | uppercase }})
+                    </option>
+                  }
+                </select>
+              } @else {
+                <div class="sensor-warning-box">
+                  <span>⚠️ No configured devices found for types: <strong>movement</strong>, <strong>presence</strong>, or <strong>door</strong>.</span>
+                  <a routerLink="/settings" class="settings-hint-link">Add in Settings &rarr; Devices</a>
+                </div>
+                <input
+                  type="text"
+                  class="form-control manual-entity-input mt-2"
+                  [(ngModel)]="formRuleEntity"
+                  (change)="onEntitySelectChange()"
+                  placeholder="Or enter sensor entity directly (e.g. binary_sensor.front_door)"
+                />
+              }
+            </div>
+
+            <!-- Threshold & Window Grid -->
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label">Trigger Threshold (Count) *</label>
+                <div class="input-with-suffix">
+                  <input
+                    type="number"
+                    class="form-control"
+                    min="1"
+                    [(ngModel)]="formRuleTrigger"
+                  />
+                  <span class="input-suffix">events</span>
+                </div>
+                <span class="form-hint">Number of events before firing alarm</span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Time Window *</label>
+                <div class="input-with-suffix">
+                  <input
+                    type="number"
+                    class="form-control"
+                    min="1"
+                    [(ngModel)]="formRuleSeconds"
+                  />
+                  <span class="input-suffix">seconds</span>
+                </div>
+                <span class="form-hint">Rolling seconds to accumulate events</span>
+              </div>
+            </div>
+
+            <!-- Action Toggles -->
+            <div class="actions-selection-box">
+              <span class="action-box-title">Actions When Threshold Exceeded:</span>
+              <div class="checkboxes-grid">
+                <label class="checkbox-label">
+                  <input type="checkbox" [(ngModel)]="formRuleNotification" />
+                  <span>🔔 Fire Notification Alert</span>
+                </label>
+
+                <label class="checkbox-label">
+                  <input type="checkbox" [(ngModel)]="formRuleSpeak" />
+                  <span>📢 Fire Speaker Announcement</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Holiday / Calendar Restriction -->
+            <div class="form-group">
+              <label class="form-label">Calendar / Holiday Restriction</label>
+              <select class="form-control" [(ngModel)]="formRuleHoliday">
+                <option value="all_days">All Days (Every Day)</option>
+                <option value="not_holiday">Workdays Only (Skip Holidays)</option>
+                <option value="holiday">Holidays Only</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="closeRuleModal()">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            (click)="saveRule()"
+            [disabled]="isSavingRule()"
+          >
+            @if (isSavingRule()) {
+              <span class="spinner-sm"></span>
+              <span>Saving...</span>
+            } @else {
+              <span>{{ ruleModalMode() === 'create' ? 'Create Rule' : 'Save Changes' }}</span>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Confirm Delete Modal -->
+  @if (isDeleteModalOpen() && deletingRule()) {
+    <app-confirm-modal
+      [isOpen]="isDeleteModalOpen()"
+      title="Delete Alarm Rule"
+      [message]="'Are you sure you want to delete alarm rule \'' + deletingRule()?.name + '\'? This event definition will be permanently removed.'"
+      confirmText="Delete Rule"
+      cancelText="Cancel"
+      confirmVariant="danger"
+      [loading]="isDeleting()"
+      (confirmed)="confirmDeleteRule()"
+      (cancelled)="closeDeleteModal()"
+    ></app-confirm-modal>
+  }
+</div>

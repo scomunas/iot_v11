@@ -24,8 +24,9 @@ def test_use_cases_crud_and_execution():
         assert "irrigation" in data["available_sections"]
         assert "blinds" in data["available_sections"]
         assert "rain" in data["available_sections"]
-        assert "heating_control" in data["available_sections"]
-        assert "heating_recurrent" in data["available_sections"]
+        assert "heating" in data["available_sections"]
+        assert "heating_control" not in data["available_sections"]
+        assert "heating_recurrent" not in data["available_sections"]
         assert any(fn["id"] == "create_datetime_file" for fn in data["available_functions"])
         assert any(fn["id"] == "control_heating" for fn in data["available_functions"])
         assert any(fn["id"] == "do_nothing" for fn in data["available_functions"])
@@ -37,7 +38,7 @@ def test_use_cases_crud_and_execution():
             elif uc.get("function_name") == "move_blind" or uc.get("name") == "move_blind":
                 assert uc.get("section") == "blinds", f"Blinds use case should have section 'blinds', got {uc.get('section')}"
             elif uc.get("function_name") == "control_heating":
-                assert uc.get("section") in ("heating_control", "heating_recurrent"), f"control_heating use case should have heating section, got {uc.get('section')}"
+                assert uc.get("section") == "heating", f"control_heating use case should have heating section, got {uc.get('section')}"
         print("PASS: Listed use cases and verified default sections for irrigation and blinds")
 
         # 2. Create new use case with section

@@ -41,6 +41,8 @@ export class EventsComponent implements OnInit {
   formHoliday: string = 'all_days';
   formNotify: number = 0;
   formNotificationMessage: string = '';
+  formSpeak: number = 0;
+  formSpeakMessage: string = '';
   formIsActive: number = 1;
 
   getHolidayLabel(holiday?: string): string {
@@ -131,6 +133,8 @@ export class EventsComponent implements OnInit {
     this.formHoliday = 'all_days';
     this.formNotify = 0;
     this.formNotificationMessage = '';
+    this.formSpeak = 0;
+    this.formSpeakMessage = '';
     this.formIsActive = 1;
     this.onUseCaseChange();
 
@@ -148,6 +152,8 @@ export class EventsComponent implements OnInit {
     this.formHoliday = def.holiday || 'all_days';
     this.formNotify = def.notify || 0;
     this.formNotificationMessage = def.notification_message || '';
+    this.formSpeak = def.speak || 0;
+    this.formSpeakMessage = def.speak_message || '';
     this.formIsActive = def.is_active;
 
     if (def.data) {
@@ -225,6 +231,8 @@ export class EventsComponent implements OnInit {
       holiday: this.formHoliday || 'all_days',
       notify: this.formNotify,
       notification_message: this.formNotify === 1 ? this.formNotificationMessage.trim() : '',
+      speak: this.formSpeak,
+      speak_message: this.formSpeak === 1 ? this.formSpeakMessage.trim() : '',
       is_active: this.formIsActive,
     };
 

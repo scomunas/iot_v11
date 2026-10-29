@@ -1,4 +1,4 @@
-declare global {
+﻿declare global {
   interface Window {
     IOT_CONFIG?: {
       apiKey?: string;
@@ -58,7 +58,7 @@ export const environment = {
       localStorage.removeItem('iot_api_key');
     }
   },
-  version: 'v11.0.4',
+  version: 'v11.1.0',
   timezone: 'Europe/Madrid',
   dateFormat: 'dd-MM-yyyy HH:mm',
 };

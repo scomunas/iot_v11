@@ -3,6 +3,7 @@ import json
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 # Add backend directory to sys.path so 'app' can be imported
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -159,6 +160,92 @@ def run_holidays_tests():
         assert len(sync_json["holidays"]) > 0
         assert "ES-CT" in sync_json["message"]
         print(f"PASS: POST /holidays/sync succeeded: {sync_json['message']}")
+
+        # 16. Test cancelling deferred one-time schedules when a holiday for today is added
+        from app.scheduler import fn_move_blind, dispatch_event_triggers, create_and_register_schedule
+        from app.database import db_list_schedules, db_create_event_definition, db_delete_event_definition, db_list_event_definitions
+
+        # Clean up any leftover test event definitions
+        for ed in db_list_event_definitions():
+            if ed.get("type") == "holiday_notify_test":
+                db_delete_event_definition(ed["id"])
+
+        # 16a. Create a deferred one-time schedule
+        future_time = now_local + timedelta(hours=3)
+        future_str = future_time.strftime("%H:%M")
+        blind_res = asyncio.run(fn_move_blind(
+            name="Test Auto Blind To Be Cancelled",
+            use_case="move_blind",
+            data={"entity": "cover.test_cancel", "position": 50, "not_before": future_str}
+        ))
+        assert "deferred until" in blind_res
+        all_s = db_list_schedules()
+        def_s = next((s for s in all_s if "Test Auto Blind To Be Cancelled" in s["name"] and s["type"] == "one-time"), None)
+        assert def_s is not None
+        assert "deferred" in def_s["name"]
+        print(f"PASS: Created deferred one-time schedule #{def_s['id']}")
+
+        # 16b. Create event definition for holiday today with notify=1
+        ev_payload = {
+            "name": "Holiday Test Notification",
+            "type": "holiday_notify_test",
+            "parameter": "today",
+            "use_case": "add_holiday",
+            "data": json.dumps({"when": "today", "name": "Deferred Cancel Test Holiday"}),
+            "holiday": "all_days",
+            "notify": 1,
+            "is_active": 1,
+        }
+        ev_resp = client.post("/event-definitions", json=ev_payload, headers=headers)
+        assert ev_resp.status_code == 201
+        ev_id = ev_resp.json()["event_definition"]["id"]
+
+        # 16c. Trigger the event with standard message: should add holiday, cancel the deferred schedule, and append deferred count
+        with patch("app.scheduler.dispatch_notifications") as mock_dispatch:
+            trig_res = asyncio.run(dispatch_event_triggers("holiday_notify_test", "today"))
+            assert len(trig_res) == 1
+            assert trig_res[0]["status"] == "executed"
+            mock_dispatch.assert_called_once()
+            call_msg = mock_dispatch.call_args[1].get("message", "")
+            assert "1 deferred schedule(s) cancelled" in call_msg
+            print(f"PASS: Standard message included deferred count: {call_msg}")
+
+        # 16d. Test custom notification message: should NOT append deferred message
+        with patch("app.scheduler.dispatch_notifications") as mock_dispatch_custom:
+            import app.scheduler as sched_module
+            sched_module._last_cancelled_deferred_count = 2
+
+            # Update event definition to have a custom message
+            client.put(f"/event-definitions/{ev_id}", json={
+                "name": "Holiday Test Notification",
+                "type": "holiday_notify_test",
+                "parameter": "today",
+                "use_case": "add_holiday",
+                "notification_message": "Custom holiday announcement text",
+                "holiday": "all_days",
+                "notify": 1,
+                "is_active": 1,
+            }, headers=headers)
+
+            asyncio.run(dispatch_event_triggers("holiday_notify_test", "today"))
+            mock_dispatch_custom.assert_called_once()
+            custom_call_msg = mock_dispatch_custom.call_args[1].get("message", "")
+            assert custom_call_msg == "Custom holiday announcement text", f"Expected exact custom message, got: {custom_call_msg}"
+            assert "deferred schedule(s) cancelled" not in custom_call_msg
+            print(f"PASS: Custom notification message did NOT include deferred message: {custom_call_msg}")
+
+        # Verify the deferred schedule is now deleted
+        all_s_after = db_list_schedules()
+        cancelled_sched = next((s for s in all_s_after if s["id"] == def_s["id"]), None)
+        assert cancelled_sched is None, "Deferred schedule must be cancelled and removed"
+        print("PASS: Deferred schedule was successfully cancelled upon today holiday trigger")
+
+        # Clean up test event definition & holiday
+        client.delete(f"/event-definitions/{ev_id}", headers=headers)
+        test_h = db_get_holiday_by_date(today_str)
+        if test_h:
+            db_delete_holiday(test_h["id"])
+        print("PASS: Cleaned up deferred schedule cancellation test fixtures")
 
     print("ALL HOLIDAYS TESTS PASSED SUCCESSFULLY!")
 

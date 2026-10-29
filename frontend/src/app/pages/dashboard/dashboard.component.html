@@ -13,7 +13,7 @@
         </div>
         <div>
           <h1 class="page-title">Dashboard</h1>
-          <p class="page-subtitle">Real-time command center for Heating, Blinds, and Irrigation</p>
+          <p class="page-subtitle">Real-time command center for Heating, Alarm, Blinds, and Irrigation</p>
         </div>
       </div>
     </div>
@@ -83,7 +83,6 @@
         <div class="feature-block active-map-block">
           <div class="block-label-row">
             <span class="block-label">Active Heating Map</span>
-            <span class="badge-count">{{ heatingMapsCount() }} configured</span>
           </div>
           <div class="active-map-pill">
             <span class="map-dot" [class.active-dot]="heatingState() === 'on'"></span>
@@ -125,18 +124,6 @@
             </div>
           }
         </div>
-
-        <!-- Summary Row -->
-        <div class="card-summary-row">
-          <div class="summary-pill">
-            <span class="pill-icon">📅</span>
-            <span>{{ calendarSlotsCount() }} Calendar Slots</span>
-          </div>
-          <div class="summary-pill">
-            <span class="pill-icon">🗺️</span>
-            <span>{{ heatingMapsCount() }} Maps</span>
-          </div>
-        </div>
       </div>
 
       <div class="card-footer">
@@ -149,7 +136,94 @@
       </div>
     </div>
 
-    <!-- CARD 2: Blinds Card -->
+    <!-- CARD 2: Alarm Card -->
+    <div class="section-card alarm-card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-icon-box alarm-icon-box">🚨</div>
+          <div>
+            <h2 class="card-title">Alarm</h2>
+            <span class="card-subtitle">Intrusion & Security</span>
+          </div>
+        </div>
+        <div class="header-control-wrap">
+          <div class="system-toggle-group" title="Master Alarm Arm/Disarm">
+            <label class="switch-control">
+              <input
+                type="checkbox"
+                [checked]="alarmEnabled()"
+                [disabled]="togglingAlarm()"
+                (change)="toggleAlarmMaster($event)"
+              />
+              <span class="switch-slider"></span>
+            </label>
+            <span class="system-toggle-label" [class.is-active]="alarmEnabled()">
+              {{ alarmEnabled() ? 'ACTIVE' : 'OFF' }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <!-- Alarm Rules & Real-time Event Hit Counters -->
+        <div class="feature-block alarm-rules-block">
+          <div class="block-label-row">
+            <span class="block-label">Alarm Rules</span>
+            <span class="block-hint">Current Hits vs Limit</span>
+          </div>
+
+          @if (alarmRules().length === 0) {
+            <p class="empty-hint">No alarm rules configured</p>
+          } @else {
+            <div class="devices-items-list alarm-rules-list">
+              @for (rule of alarmRules(); track rule.id) {
+                @let rData = getRuleData(rule);
+                @let hitCount = getRuleEventCount(rData.entity);
+                <div class="alarm-rule-row" [title]="rule.name + (rData.entity ? ' (' + rData.entity + ')' : '')">
+                  <div class="rule-sensor-info">
+                    <span class="sensor-icon">{{ getAlarmDeviceTypeIcon(getAlarmDeviceType(rData.entity)) }}</span>
+                    <span class="device-name">{{ getAlarmDeviceName(rData.entity) }}</span>
+                    <span class="device-type-badge-mini" [ngClass]="getAlarmDeviceType(rData.entity)">
+                      {{ getAlarmDeviceType(rData.entity) | uppercase }}
+                    </span>
+                  </div>
+
+                  <div class="alarm-readings-group">
+                    <div
+                      class="alarm-box count"
+                      [class.has-hits]="hitCount > 0 && hitCount <= rData.trigger"
+                      [class.is-exceeded]="hitCount > rData.trigger"
+                      title="{{ hitCount }} sensor events recorded in memory active window"
+                    >
+                      <span class="alarm-box-label">EVENTS</span>
+                      <span class="alarm-box-value">{{ hitCount }}</span>
+                    </div>
+                    <div
+                      class="alarm-box target"
+                      title="Threshold: triggers fire_alarm when hits exceed {{ rData.trigger }} within {{ rData.seconds }}s"
+                    >
+                      <span class="alarm-box-label">LIMIT</span>
+                      <span class="alarm-box-value">&gt; {{ rData.trigger }} <small class="window-unit">/ {{ rData.seconds }}s</small></span>
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <a routerLink="/alarm" class="btn-card-manage">
+          <span>Manage Alarm & Security</span>
+          <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- CARD 3: Blinds Card -->
     <div class="section-card blinds-card">
       <div class="card-header">
         <div class="card-title-group">
@@ -158,9 +232,6 @@
             <h2 class="card-title">Blinds</h2>
             <span class="card-subtitle">Window Covers</span>
           </div>
-        </div>
-        <div class="header-control-wrap">
-          <span class="badge-count">{{ blindDevices().length }} blinds</span>
         </div>
       </div>
 
@@ -199,18 +270,6 @@
             </div>
           }
         </div>
-
-        <!-- Summary Row -->
-        <div class="card-summary-row">
-          <div class="summary-pill">
-            <span class="pill-icon">🕒</span>
-            <span>{{ blindsSchedulesCount() }} Schedules</span>
-          </div>
-          <div class="summary-pill">
-            <span class="pill-icon">⚡</span>
-            <span>{{ blindsEventsCount() }} Events</span>
-          </div>
-        </div>
       </div>
 
       <div class="card-footer">
@@ -232,9 +291,6 @@
             <h2 class="card-title">Irrigation</h2>
             <span class="card-subtitle">Watering Zones</span>
           </div>
-        </div>
-        <div class="header-control-wrap">
-          <span class="badge-count">{{ irrigationDevices().length }} zones</span>
         </div>
       </div>
 
@@ -270,18 +326,6 @@
               }
             </div>
           }
-        </div>
-
-        <!-- Summary Row -->
-        <div class="card-summary-row">
-          <div class="summary-pill">
-            <span class="pill-icon">🕒</span>
-            <span>{{ irrigationSchedulesCount() }} Schedules</span>
-          </div>
-          <div class="summary-pill">
-            <span class="pill-icon">⚡</span>
-            <span>{{ irrigationEventsCount() }} Events</span>
-          </div>
         </div>
       </div>
 

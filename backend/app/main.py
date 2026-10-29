@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, Body, FastAPI, HTTPException, Query, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 import uvicorn
 
 # Define backend directory and load backend/.env
@@ -237,6 +237,8 @@ class ScheduleCreateRequest(BaseModel):
     data: Optional[Any] = Field(default="{}", description="JSON parameters for task execution")
     notify: Optional[int] = Field(default=0, ge=0, le=1, description="1 to notify when executed, 0 otherwise")
     notification_message: Optional[str] = Field(default="", description="Optional custom notification message override")
+    speak: Optional[int] = Field(default=0, ge=0, le=1, description="1 to speak announcement through speaker system when executed, 0 otherwise")
+    speak_message: Optional[str] = Field(default="", description="Optional custom speech message override")
     block: Optional[int] = Field(default=0, ge=0, le=1, description="1 if blocked/protected from changes or deletion, 0 otherwise")
 
 
@@ -249,6 +251,8 @@ class ScheduleUpdateRequest(BaseModel):
     data: Optional[Any] = Field(default=None, description="JSON parameters for task execution")
     notify: Optional[int] = Field(default=None, ge=0, le=1, description="1 to notify when executed, 0 otherwise")
     notification_message: Optional[str] = Field(default=None, description="Optional custom notification message override")
+    speak: Optional[int] = Field(default=None, ge=0, le=1, description="1 to speak announcement through speaker system when executed, 0 otherwise")
+    speak_message: Optional[str] = Field(default=None, description="Optional custom speech message override")
     block: Optional[int] = Field(default=None, ge=0, le=1, description="1 if blocked/protected from changes or deletion, 0 otherwise")
 
 
@@ -269,6 +273,24 @@ def ping():
 def health_check(_: str = Security(verify_api_key)):
     """Health check endpoint protected by API Key."""
     ha_connected = check_homeassistant_connection()
+    try:
+        from app.notifications import get_notification_channels
+    except ImportError:
+        try:
+            from notifications import get_notification_channels
+        except ImportError:
+            get_notification_channels = None
+
+    tg_connected = False
+    if get_notification_channels:
+        try:
+            channels = get_notification_channels()
+            tg_ch = next((c for c in channels if c.get("id") == "telegram"), None)
+            if tg_ch:
+                tg_connected = bool(tg_ch.get("status", {}).get("configured", False))
+        except Exception as exc:
+            logger.warning("[health] Error checking Telegram status: %s", exc)
+
     return {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -276,6 +298,7 @@ def health_check(_: str = Security(verify_api_key)):
         "database": "connected",
         "scheduler": "running",
         "homeassistant": "connected" if ha_connected else "disconnected",
+        "telegram": "connected" if tg_connected else "disconnected",
     }
 
 
@@ -300,6 +323,8 @@ def create_schedule(payload: ScheduleCreateRequest, _: str = Security(verify_api
             data=payload.data,
             notify=payload.notify or 0,
             notification_message=payload.notification_message,
+            speak=payload.speak or 0,
+            speak_message=payload.speak_message,
             block=payload.block or 0,
         )
         return {
@@ -347,6 +372,8 @@ def update_schedule(
             data=payload.data,
             notify=payload.notify,
             notification_message=payload.notification_message,
+            speak=payload.speak,
+            speak_message=payload.speak_message,
             block=payload.block,
         )
         if not updated:
@@ -408,14 +435,14 @@ class UseCaseCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, description="Unique use case name used in schedules")
     function_name: str = Field(..., min_length=1, description="Name of the function to execute")
     description: Optional[str] = Field("", description="Description of what this use case does")
-    section: Optional[str] = Field(None, description="Optional section identifier ('irrigation', 'blinds', 'rain', 'notification', 'heating', 'heating_control', 'heating_recurrent')")
+    section: Optional[str] = Field(None, description="Optional section identifier ('irrigation', 'blinds', 'rain', 'notification', 'heating', 'alarm', 'general')")
 
 
 class UseCaseUpdateRequest(BaseModel):
     name: str = Field(..., min_length=1, description="Unique use case name used in schedules")
     function_name: str = Field(..., min_length=1, description="Name of the function to execute")
     description: Optional[str] = Field("", description="Description of what this use case does")
-    section: Optional[str] = Field(None, description="Optional section identifier ('irrigation', 'blinds', 'rain', 'notification', 'heating', 'heating_control', 'heating_recurrent')")
+    section: Optional[str] = Field(None, description="Optional section identifier ('irrigation', 'blinds', 'rain', 'notification', 'heating', 'alarm', 'general')")
 
 
 @api_v1.get("/use-cases")
@@ -428,7 +455,7 @@ def list_use_cases(_: str = Security(verify_api_key)):
     return {
         "use_cases": db_list_use_cases(),
         "available_functions": available_fn_list,
-        "available_sections": ["irrigation", "blinds", "rain", "notification", "heating_control", "heating_recurrent"],
+        "available_sections": ["irrigation", "blinds", "rain", "heating", "alarm", "general"],
     }
 
 
@@ -536,6 +563,33 @@ def update_system_settings(payload: Dict[str, Any] = Body(...), _: str = Securit
                 sync_heating_recurrent_schedule(is_on)
             except (ValueError, TypeError) as err:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+        elif k == "heating_heater_entities":
+            if isinstance(v, list):
+                clean_list = [str(e).strip() for e in v if str(e).strip()]
+                db_set_setting(k, json.dumps(clean_list))
+            elif isinstance(v, str):
+                try:
+                    parsed = json.loads(v)
+                    if isinstance(parsed, list):
+                        db_set_setting(k, json.dumps([str(e).strip() for e in parsed if str(e).strip()]))
+                    else:
+                        db_set_setting(k, v)
+                except Exception:
+                    # In case it was passed as Python repr or comma-separated string
+                    import ast
+                    try:
+                        parsed = ast.literal_eval(v)
+                        if isinstance(parsed, list):
+                            db_set_setting(k, json.dumps([str(e).strip() for e in parsed if str(e).strip()]))
+                        else:
+                            db_set_setting(k, json.dumps([v.strip()]))
+                    except Exception:
+                        clean_items = [e.strip() for e in v.split(",") if e.strip()]
+                        db_set_setting(k, json.dumps(clean_items))
+            else:
+                db_set_setting(k, "[]")
+        elif isinstance(v, (list, dict)):
+            db_set_setting(k, json.dumps(v))
         else:
             db_set_setting(k, str(v))
 
@@ -551,7 +605,7 @@ def update_system_settings(payload: Dict[str, Any] = Body(...), _: str = Securit
 
 class DeviceCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Device friendly name")
-    type: Literal["light", "irrigation", "temperature", "movement", "presence", "blinds", "rain", "heating"]
+    type: Literal["light", "irrigation", "temperature", "movement", "presence", "blinds", "rain", "door"]
     entity_id: str = Field(..., min_length=1, max_length=200, description="Home Assistant entity ID")
 
 
@@ -565,7 +619,7 @@ class DeviceActionRequest(BaseModel):
 
 class DeviceUpdateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Device friendly name")
-    type: Literal["light", "irrigation", "temperature", "movement", "presence", "blinds", "rain", "heating"]
+    type: Literal["light", "irrigation", "temperature", "movement", "presence", "blinds", "rain", "door"]
     entity_id: str = Field(..., min_length=1, max_length=200, description="Home Assistant entity ID")
 
 
@@ -783,7 +837,17 @@ class EventDefinitionCreateRequest(BaseModel):
     holiday: Optional[str] = Field(default="all_days", description="Holiday filter ('all_days', 'holiday', 'not_holiday')")
     notify: Optional[int] = Field(default=0, ge=0, le=1, description="1 to notify when executed, 0 otherwise")
     notification_message: Optional[str] = Field(default="", description="Optional custom notification message override")
+    speak: Optional[int] = Field(default=0, ge=0, le=1, description="1 to speak announcement through speaker system when executed, 0 otherwise")
+    speak_message: Optional[str] = Field(default="", description="Optional custom speech message override")
     is_active: Optional[int] = Field(default=1, ge=0, le=1, description="Active status (1=active, 0=paused)")
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_type(cls, values: Any) -> Any:
+        if isinstance(values, dict):
+            if "type" not in values and "event_type" in values:
+                values["type"] = values["event_type"]
+        return values
 
 
 class EventDefinitionUpdateRequest(BaseModel):
@@ -795,16 +859,28 @@ class EventDefinitionUpdateRequest(BaseModel):
     holiday: Optional[str] = Field(default="all_days", description="Holiday filter ('all_days', 'holiday', 'not_holiday')")
     notify: Optional[int] = Field(default=None, ge=0, le=1, description="1 to notify when executed, 0 otherwise")
     notification_message: Optional[str] = Field(default=None, description="Optional custom notification message override")
+    speak: Optional[int] = Field(default=None, ge=0, le=1, description="1 to speak announcement through speaker system when executed, 0 otherwise")
+    speak_message: Optional[str] = Field(default=None, description="Optional custom speech message override")
     is_active: Optional[int] = Field(default=1, ge=0, le=1, description="Active status (1=active, 0=paused)")
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_type(cls, values: Any) -> Any:
+        if isinstance(values, dict):
+            if "type" not in values and "event_type" in values:
+                values["type"] = values["event_type"]
+        return values
 
 
 @api_v1.get("/event-definitions")
+@api_v1.get("/events/definitions", include_in_schema=False)
 def list_event_definitions(_: str = Security(verify_api_key)):
     """Retrieve all configured event definitions."""
     return {"event_definitions": db_list_event_definitions()}
 
 
 @api_v1.post("/event-definitions", status_code=status.HTTP_201_CREATED)
+@api_v1.post("/events/definitions", status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def create_event_definition(payload: EventDefinitionCreateRequest, _: str = Security(verify_api_key)):
     """Create a new event definition."""
     try:
@@ -817,6 +893,8 @@ def create_event_definition(payload: EventDefinitionCreateRequest, _: str = Secu
             holiday=payload.holiday or "all_days",
             notify=payload.notify or 0,
             notification_message=payload.notification_message,
+            speak=payload.speak or 0,
+            speak_message=payload.speak_message,
             is_active=payload.is_active if payload.is_active is not None else 1,
         )
         logger.info("Event definition created: ID #%s ('%s', type: %s, use_case: %s)", defn["id"], defn["name"], defn["type"], defn["use_case"])
@@ -829,6 +907,7 @@ def create_event_definition(payload: EventDefinitionCreateRequest, _: str = Secu
 
 
 @api_v1.get("/event-definitions/{definition_id}")
+@api_v1.get("/events/definitions/{definition_id}", include_in_schema=False)
 def get_event_definition(definition_id: int, _: str = Security(verify_api_key)):
     """Get a single event definition by ID."""
     defn = db_get_event_definition(definition_id)
@@ -838,6 +917,7 @@ def get_event_definition(definition_id: int, _: str = Security(verify_api_key)):
 
 
 @api_v1.put("/event-definitions/{definition_id}")
+@api_v1.put("/events/definitions/{definition_id}", include_in_schema=False)
 def update_event_definition(
     definition_id: int,
     payload: EventDefinitionUpdateRequest,
@@ -859,6 +939,8 @@ def update_event_definition(
             holiday=payload.holiday or "all_days",
             notify=payload.notify,
             notification_message=payload.notification_message,
+            speak=payload.speak,
+            speak_message=payload.speak_message,
             is_active=payload.is_active if payload.is_active is not None else 1,
         )
         return {
@@ -870,6 +952,7 @@ def update_event_definition(
 
 
 @api_v1.delete("/event-definitions/{definition_id}")
+@api_v1.delete("/events/definitions/{definition_id}", include_in_schema=False)
 def delete_event_definition(definition_id: int, _: str = Security(verify_api_key)):
     """Delete an event definition."""
     existing = db_get_event_definition(definition_id)
@@ -1009,6 +1092,259 @@ def send_telegram_alert_endpoint(
 
 
 # ==============================================================================
+# Notification Channels Endpoints
+# ==============================================================================
+
+class NotificationChannelUpdateRequest(BaseModel):
+    enabled: Optional[bool] = Field(None, description="Enable or disable this notification channel")
+    name: Optional[str] = Field(None, description="Display name for this channel")
+    config: Optional[Dict[str, Any]] = Field(None, description="Channel-specific configuration (e.g. chat_id, bot_token)")
+
+
+class NotificationTestRequest(BaseModel):
+    channel_id: Optional[str] = Field("telegram", description="Target notification channel ID")
+    message: Optional[str] = Field(None, description="Optional custom test message")
+
+
+@api_v1.get("/notifications/channels")
+def list_notification_channels(_: str = Security(verify_api_key)):
+    """Retrieve all configured notification channels with live status."""
+    try:
+        from app.notifications import get_notification_channels
+    except ImportError:
+        from notifications import get_notification_channels
+    return {"channels": get_notification_channels()}
+
+
+@api_v1.put("/notifications/channels/{channel_id}")
+def update_notification_channel_endpoint(
+    channel_id: str,
+    payload: NotificationChannelUpdateRequest,
+    _: str = Security(verify_api_key),
+):
+    """Update configuration and enabled state for a notification channel."""
+    try:
+        from app.notifications import update_notification_channel
+    except ImportError:
+        from notifications import update_notification_channel
+    updated = update_notification_channel(
+        channel_id=channel_id,
+        enabled=payload.enabled,
+        helper_entity=payload.helper_entity,
+        name=payload.name,
+        config=payload.config,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Notification channel '{channel_id}' not found.")
+    return {"status": "success", "channel": updated}
+
+
+@api_v1.post("/notifications/test")
+async def test_notification_channel_endpoint(
+    payload: NotificationTestRequest,
+    _: str = Security(verify_api_key),
+):
+    """Send a test notification alert to a specific channel."""
+    try:
+        from app.notifications import send_channel_test_alert
+    except ImportError:
+        from notifications import send_channel_test_alert
+    try:
+        res = await send_channel_test_alert(
+            channel_id=payload.channel_id or "telegram",
+            message=payload.message,
+        )
+        return {"status": "success", "result": res}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ==============================================================================
+# Speaker System (Chime TTS) Endpoints
+# ==============================================================================
+
+class SpeakerConfigUpdateRequest(BaseModel):
+    enabled: Optional[bool] = Field(None, description="Enable or disable speaker broadcasts")
+    speakers: Optional[List[str]] = Field(None, description="List of media_player entity IDs")
+    chime_path: Optional[str] = Field(None, description="Chime audio file name or path (e.g. 'bells')")
+    tts_platform: Optional[str] = Field(None, description="TTS service platform (e.g. 'tts.google_translate_say')")
+    volume_level: Optional[float] = Field(None, ge=0.0, le=1.0, description="Volume level between 0.0 and 1.0")
+    default_message: Optional[str] = Field(None, description="Default announcement message")
+
+
+class SpeakerBroadcastRequest(BaseModel):
+    message: Optional[str] = Field(None, description="Speech message text (uses default if omitted)")
+    speakers: Optional[List[str]] = Field(None, description="Optional override list of media_player entities")
+    chime_path: Optional[str] = Field(None, description="Optional chime audio path override (e.g. 'bells')")
+    tts_platform: Optional[str] = Field(None, description="Optional TTS platform override")
+    volume_level: Optional[float] = Field(None, ge=0.0, le=1.0, description="Optional volume level override")
+    force: Optional[bool] = Field(True, description="Force broadcast even if system is marked disabled (useful for testing)")
+
+
+@api_v1.get("/speakers/config")
+def get_speaker_system_config(_: str = Security(verify_api_key)):
+    """Retrieve speaker system configuration."""
+    try:
+        from app.speakers import get_speaker_config
+    except ImportError:
+        from speakers import get_speaker_config
+    return get_speaker_config()
+
+
+@api_v1.put("/speakers/config")
+def update_speaker_system_config(
+    payload: SpeakerConfigUpdateRequest,
+    _: str = Security(verify_api_key),
+):
+    """Update speaker system configuration."""
+    try:
+        from app.speakers import update_speaker_config
+    except ImportError:
+        from speakers import update_speaker_config
+    updated = update_speaker_config(
+        enabled=payload.enabled,
+        speakers=payload.speakers,
+        chime_path=payload.chime_path,
+        tts_platform=payload.tts_platform,
+        volume_level=payload.volume_level,
+        default_message=payload.default_message,
+    )
+    return {"status": "success", "config": updated}
+
+
+@api_v1.post("/speakers/broadcast")
+def broadcast_speaker_message(
+    payload: SpeakerBroadcastRequest,
+    _: str = Security(verify_api_key),
+):
+    """Broadcast an audio message using Home Assistant chime_tts.say service."""
+    try:
+        from app.speakers import broadcast_chime_tts
+    except ImportError:
+        from speakers import broadcast_chime_tts
+    try:
+        res = broadcast_chime_tts(
+            message=payload.message,
+            speakers=payload.speakers,
+            chime_path=payload.chime_path,
+            tts_platform=payload.tts_platform,
+            volume_level=payload.volume_level,
+            force=payload.force if payload.force is not None else True,
+        )
+        return {"status": "success", "result": res}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ==============================================================================
+# ==============================================================================
+# Alarm System Endpoints
+# ==============================================================================
+
+class AlarmConfigUpdateRequest(BaseModel):
+    enabled: Optional[bool] = Field(None, description="Enable or disable alarm system")
+    helper_entity: Optional[str] = Field(None, description="Home Assistant helper entity defining alarm on/off state")
+    notification_message: Optional[str] = Field(None, description="Static notification template with {entity}, {trigger}, {seconds}, {count} tags")
+    speak_message: Optional[str] = Field(None, description="Static speak announcement template with {entity}, {trigger}, {seconds}, {count} tags")
+    default_trigger: Optional[int] = Field(None, ge=1, description="Default event count threshold")
+    default_seconds: Optional[int] = Field(None, ge=1, description="Default evaluation time window in seconds")
+    retention_seconds: Optional[int] = Field(None, ge=5, description="Max memory retention window in seconds to prevent uncontrolled growth")
+    delay_seconds: Optional[int] = Field(None, ge=0, description="Global delay between trigger and fire alarm in seconds")
+
+
+class AlarmTestRequest(BaseModel):
+    entity: Optional[str] = Field("binary_sensor.front_door", description="Entity to simulate")
+    trigger: Optional[int] = Field(1, ge=1, description="Event count threshold")
+    seconds: Optional[int] = Field(60, ge=1, description="Time window in seconds")
+    notification: Optional[bool] = Field(True, description="Whether to fire notification")
+    speak: Optional[bool] = Field(False, description="Whether to fire speaker announcement")
+
+
+@api_v1.get("/alarm/config")
+def get_alarm_configuration(_: str = Security(verify_api_key)):
+    """Retrieve general alarm system configuration."""
+    try:
+        from app.alarm import get_alarm_config
+    except ImportError:
+        from alarm import get_alarm_config
+    return {"status": "success", "config": get_alarm_config()}
+
+
+@api_v1.put("/alarm/config")
+def update_alarm_configuration(
+    payload: AlarmConfigUpdateRequest,
+    _: str = Security(verify_api_key),
+):
+    """Update general alarm system configuration."""
+    try:
+        from app.alarm import update_alarm_config
+    except ImportError:
+        from alarm import update_alarm_config
+    updated = update_alarm_config(
+        enabled=payload.enabled,
+        helper_entity=payload.helper_entity,
+        notification_message=payload.notification_message,
+        speak_message=payload.speak_message,
+        default_trigger=payload.default_trigger,
+        default_seconds=payload.default_seconds,
+        retention_seconds=payload.retention_seconds,
+        delay_seconds=payload.delay_seconds,
+    )
+    return {"status": "success", "message": "Alarm configuration updated successfully", "config": updated}
+
+
+@api_v1.post("/alarm/test")
+async def test_alarm_trigger(
+    payload: AlarmTestRequest,
+    _: str = Security(verify_api_key),
+):
+    """Test evaluate alarm trigger with sample parameters."""
+    try:
+        from app.alarm import evaluate_alarm_event
+    except ImportError:
+        from alarm import evaluate_alarm_event
+    res = await evaluate_alarm_event(
+        entity=payload.entity or "binary_sensor.front_door",
+        trigger=payload.trigger if payload.trigger is not None else 1,
+        seconds=payload.seconds if payload.seconds is not None else 60,
+        notification=bool(payload.notification),
+        speak=bool(payload.speak),
+    )
+    return {"status": "success", "result": res}
+
+
+@api_v1.get("/alarm/events-history")
+def get_alarm_events_history(_: str = Security(verify_api_key)):
+    """Retrieve recent in-memory recorded sensor events."""
+    try:
+        from app.alarm import get_memory_events
+    except ImportError:
+        from alarm import get_memory_events
+    return {"status": "success", "events": get_memory_events()}
+
+
+@api_v1.delete("/alarm/events-history")
+def clear_alarm_events_history(_: str = Security(verify_api_key)):
+    """Clear all in-memory recorded alarm events."""
+    try:
+        from app.alarm import clear_memory_events
+    except ImportError:
+        from alarm import clear_memory_events
+    clear_memory_events()
+    return {"status": "success", "message": "Alarm memory events cleared successfully"}
+
+
+@api_v1.get("/alarm/rules")
+def list_alarm_rules(_: str = Security(verify_api_key)):
+    """Retrieve all event definitions configured as alarm rules."""
+    all_defs = db_list_event_definitions()
+    alarm_rules = [
+        d for d in all_defs
+        if d.get("use_case") == "check_alarm" or d.get("use_case") == "alarm" or str(d.get("name", "")).lower().startswith("alarm")
+    ]
+    return {"status": "success", "rules": alarm_rules}
+
+
 # Heating System Endpoints
 # ==============================================================================
 
@@ -1022,12 +1358,88 @@ class HeatingStateRequest(BaseModel):
     until: Optional[str] = Field(default=None, description="ISO timestamp (or 'YYYY-MM-DDTHH:MM' or 'HH:MM') to deactivate heating until")
 
 
+class HeatingSettingsUpdateRequest(BaseModel):
+    heating_helper_entity: Optional[str] = Field(default=None, description="Home Assistant helper entity defining heating on/off state")
+    heating_interval_minutes: Optional[int] = Field(default=None, ge=1, le=720, description="Recurrent check interval in minutes")
+    heating_heater_entities: Optional[List[str]] = Field(default=None, description="List of heater actuator entity IDs to fire when heating map conditions are met")
+
+
+@api_v1.get("/heating/settings")
+def get_heating_settings(_: str = Security(verify_api_key)):
+    """Retrieve global heating settings."""
+    helper_entity = db_get_setting("heating_helper_entity", "") or ""
+    try:
+        interval = int(db_get_setting("heating_interval_minutes", "5") or 5)
+    except Exception:
+        interval = 5
+    raw_heaters = db_get_setting("heating_heater_entities", "[]") or "[]"
+    try:
+        heaters = json.loads(raw_heaters) if isinstance(raw_heaters, str) else list(raw_heaters)
+        if not isinstance(heaters, list):
+            heaters = []
+    except Exception:
+        import ast
+        try:
+            parsed = ast.literal_eval(raw_heaters)
+            heaters = [str(e).strip() for e in parsed if str(e).strip()] if isinstance(parsed, list) else []
+        except Exception:
+            heaters = []
+    return {
+        "heating_helper_entity": helper_entity,
+        "heating_interval_minutes": interval,
+        "heating_heater_entities": heaters,
+    }
+
+
+@api_v1.put("/heating/settings")
+def update_heating_settings(payload: HeatingSettingsUpdateRequest, _: str = Security(verify_api_key)):
+    """Update global heating settings."""
+    if payload.heating_helper_entity is not None:
+        db_set_setting("heating_helper_entity", payload.heating_helper_entity.strip())
+
+    if payload.heating_interval_minutes is not None:
+        db_set_setting("heating_interval_minutes", payload.heating_interval_minutes)
+        heating_st = db_get_heating_state()
+        is_on = heating_st.get("state") == "on"
+        sync_heating_recurrent_schedule(is_on)
+
+    if payload.heating_heater_entities is not None:
+        clean_heaters = [str(e).strip() for e in payload.heating_heater_entities if str(e).strip()]
+        db_set_setting("heating_heater_entities", json.dumps(clean_heaters))
+
+    raw_heaters = db_get_setting("heating_heater_entities", "[]") or "[]"
+    try:
+        heaters = json.loads(raw_heaters) if isinstance(raw_heaters, str) else list(raw_heaters)
+        if not isinstance(heaters, list):
+            heaters = []
+    except Exception:
+        import ast
+        try:
+            parsed = ast.literal_eval(raw_heaters)
+            heaters = [str(e).strip() for e in parsed if str(e).strip()] if isinstance(parsed, list) else []
+        except Exception:
+            heaters = []
+
+    return {
+        "status": "success",
+        "message": "Heating settings updated successfully",
+        "settings": {
+            "heating_helper_entity": db_get_setting("heating_helper_entity", "") or "",
+            "heating_interval_minutes": int(db_get_setting("heating_interval_minutes", "5") or 5),
+            "heating_heater_entities": heaters,
+        },
+    }
+
+
 @api_v1.get("/heating/state")
 @api_v1.get("/heating/status", include_in_schema=False)
 def get_heating_state(_: str = Security(verify_api_key)):
-    """Retrieve current heating system status, devices, active map, and pending resume schedules."""
+    """
+    Retrieve current heating system status, helper state, temperature sensors, active map,
+    and pending resume schedules.
+    """
     state_info = db_get_heating_state()
-    heating_devices = db_list_devices(device_type="heating")
+    helper_entity = db_get_setting("heating_helper_entity", "") or ""
     temp_devices = db_list_devices(device_type="temperature")
 
     try:
@@ -1058,12 +1470,14 @@ def get_heating_state(_: str = Security(verify_api_key)):
     ]
 
     return {
-        "state": state_info.get("state", "on"),
+        "state": state_info.get("state", "off"),
+        "helper_entity": helper_entity,
+        "helper_state": state_info.get("state", "off"),
         "deactivated_until": state_info.get("deactivated_until"),
         "updated_at": state_info.get("updated_at"),
         "active_map_id": state_info.get("active_map_id"),
         "active_map": state_info.get("active_map"),
-        "devices": heating_devices,
+        "devices": [],
         "temperature_devices": temp_devices,
         "pending_resume_schedules": pending_resumes,
     }
@@ -1142,16 +1556,19 @@ async def update_heating_state(payload: HeatingStateRequest, _: str = Security(v
         if target_dt is not None:
             deactivated_until_iso = target_dt.isoformat()
 
-            # Find or use use case executing start_heating for deferred activation
+            # Find or use use case executing control_heating / heating section for deferred activation
             all_ucs = db_list_use_cases()
             heating_uc = next(
-                (u for u in all_ucs if u.get("function_name") == "start_heating"),
+                (u for u in all_ucs if u.get("function_name") == "control_heating" and u.get("section") == "heating"),
                 None
             ) or next(
-                (u for u in all_ucs if u.get("section") == "heating_control"),
+                (u for u in all_ucs if u.get("section") == "heating"),
+                None
+            ) or next(
+                (u for u in all_ucs if u.get("function_name") == "start_heating"),
                 None
             )
-            uc_name = heating_uc["name"] if heating_uc else "start_heating"
+            uc_name = heating_uc["name"] if heating_uc else "Heating"
 
             sched_name = f"Auto - Heating Activate ({target_dt.strftime('%Y-%m-%d %H:%M')})"
             created_schedule = create_and_register_schedule(

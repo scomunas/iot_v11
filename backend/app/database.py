@@ -68,13 +68,15 @@ def init_db() -> None:
                 data TEXT NOT NULL DEFAULT '{}',
                 notify INTEGER NOT NULL DEFAULT 0,
                 notification_message TEXT DEFAULT '',
+                speak INTEGER NOT NULL DEFAULT 0,
+                speak_message TEXT DEFAULT '',
                 block INTEGER NOT NULL DEFAULT 0,
                 is_active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL
             );
             """
         )
-        # Ensure 'data', 'notify', 'notification_message', and 'block' columns exist in schedules (migration)
+        # Ensure 'data', 'notify', 'notification_message', 'speak', 'speak_message', and 'block' columns exist in schedules (migration)
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(schedules)")
         cols = [c[1] for c in cursor.fetchall()]
@@ -87,6 +89,12 @@ def init_db() -> None:
         if "notification_message" not in cols:
             logger.info("Migrating schedules table: adding 'notification_message' column")
             conn.execute("ALTER TABLE schedules ADD COLUMN notification_message TEXT DEFAULT ''")
+        if "speak" not in cols:
+            logger.info("Migrating schedules table: adding 'speak' column")
+            conn.execute("ALTER TABLE schedules ADD COLUMN speak INTEGER NOT NULL DEFAULT 0")
+        if "speak_message" not in cols:
+            logger.info("Migrating schedules table: adding 'speak_message' column")
+            conn.execute("ALTER TABLE schedules ADD COLUMN speak_message TEXT DEFAULT ''")
         if "block" not in cols:
             logger.info("Migrating schedules table: adding 'block' column")
             conn.execute("ALTER TABLE schedules ADD COLUMN block INTEGER NOT NULL DEFAULT 0")
@@ -114,7 +122,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS devices (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
-                type TEXT NOT NULL CHECK(type IN ('light', 'irrigation', 'temperature', 'movement', 'presence', 'blinds', 'rain', 'heating')),
+                type TEXT NOT NULL CHECK(type IN ('light', 'irrigation', 'temperature', 'movement', 'presence', 'blinds', 'rain', 'door')),
                 entity_id TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
@@ -142,12 +150,14 @@ def init_db() -> None:
                 holiday TEXT NOT NULL DEFAULT 'all_days',
                 notify INTEGER NOT NULL DEFAULT 0,
                 notification_message TEXT DEFAULT '',
+                speak INTEGER NOT NULL DEFAULT 0,
+                speak_message TEXT DEFAULT '',
                 is_active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL
             );
             """
         )
-        # Ensure 'holiday', 'notify', and 'notification_message' columns exist in event_definitions (migration)
+        # Ensure 'holiday', 'notify', 'notification_message', 'speak', and 'speak_message' columns exist in event_definitions (migration)
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(event_definitions)")
         ed_cols = [c[1] for c in cursor.fetchall()]
@@ -160,6 +170,12 @@ def init_db() -> None:
         if "notification_message" not in ed_cols:
             logger.info("Migrating event_definitions table: adding 'notification_message' column")
             conn.execute("ALTER TABLE event_definitions ADD COLUMN notification_message TEXT DEFAULT ''")
+        if "speak" not in ed_cols:
+            logger.info("Migrating event_definitions table: adding 'speak' column")
+            conn.execute("ALTER TABLE event_definitions ADD COLUMN speak INTEGER NOT NULL DEFAULT 0")
+        if "speak_message" not in ed_cols:
+            logger.info("Migrating event_definitions table: adding 'speak_message' column")
+            conn.execute("ALTER TABLE event_definitions ADD COLUMN speak_message TEXT DEFAULT ''")
 
         conn.execute(
             """
@@ -176,7 +192,6 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS heating_state (
                 id INTEGER PRIMARY KEY CHECK(id = 1),
-                state TEXT NOT NULL CHECK(state IN ('on', 'off')),
                 deactivated_until TEXT,
                 active_map_id INTEGER,
                 updated_at TEXT NOT NULL
@@ -211,35 +226,63 @@ def init_db() -> None:
             """
         )
 
-        # Migration: Ensure active_map_id column exists in heating_state
+        # Migration: Ensure heating_state does not store 'state' column (heating state is derived dynamically from helper entity)
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(heating_state)")
         hs_cols = [c[1] for c in cursor.fetchall()]
-        if "active_map_id" not in hs_cols:
+        if "state" in hs_cols:
+            logger.info("Migrating heating_state table to remove 'state' column...")
+            cursor.execute(
+                """
+                CREATE TABLE heating_state_migration (
+                    id INTEGER PRIMARY KEY CHECK(id = 1),
+                    deactivated_until TEXT,
+                    active_map_id INTEGER,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            cursor.execute("INSERT INTO heating_state_migration (id, deactivated_until, active_map_id, updated_at) SELECT id, deactivated_until, active_map_id, updated_at FROM heating_state")
+            cursor.execute("DROP TABLE heating_state")
+            cursor.execute("ALTER TABLE heating_state_migration RENAME TO heating_state")
+            logger.info("heating_state table successfully migrated without 'state' column.")
+        elif "active_map_id" not in hs_cols:
             logger.info("Migrating heating_state table: adding 'active_map_id' column")
             conn.execute("ALTER TABLE heating_state ADD COLUMN active_map_id INTEGER")
 
-        # Migration: Ensure 'blinds', 'rain', and 'heating' are accepted in devices table CHECK constraint
+        # Migration: Remove 'heating' from devices table CHECK constraint and migrate any heating device to heating_helper_entity setting
         cursor = conn.cursor()
         cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='devices'")
         devices_sql_row = cursor.fetchone()
-        if devices_sql_row and ("'blinds'" not in devices_sql_row[0] or "'rain'" not in devices_sql_row[0] or "'heating'" not in devices_sql_row[0]):
-            logger.info("Migrating devices table to include 'blinds', 'rain', and 'heating' in CHECK constraint...")
+        if devices_sql_row and ("'heating'" in devices_sql_row[0] or "'door'" not in devices_sql_row[0]):
+            logger.info("Migrating devices table to remove 'heating' from CHECK constraint...")
+            cursor.execute("SELECT entity_id FROM devices WHERE type = 'heating' LIMIT 1")
+            old_heat_dev = cursor.fetchone()
+            if old_heat_dev and old_heat_dev[0]:
+                cursor.execute("SELECT value FROM settings WHERE key = 'heating_helper_entity'")
+                curr_helper = cursor.fetchone()
+                if not curr_helper or not curr_helper[0]:
+                    now_u = datetime.now(timezone.utc).isoformat()
+                    cursor.execute(
+                        "INSERT INTO settings (key, value, updated_at) VALUES ('heating_helper_entity', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                        (old_heat_dev[0], now_u)
+                    )
+            cursor.execute("DELETE FROM devices WHERE type = 'heating'")
             cursor.execute(
                 """
                 CREATE TABLE devices_migration (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
-                    type TEXT NOT NULL CHECK(type IN ('light', 'irrigation', 'temperature', 'movement', 'presence', 'blinds', 'rain', 'heating')),
+                    type TEXT NOT NULL CHECK(type IN ('light', 'irrigation', 'temperature', 'movement', 'presence', 'blinds', 'rain', 'door')),
                     entity_id TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
                 """
             )
-            cursor.execute("INSERT INTO devices_migration (id, name, type, entity_id, created_at) SELECT id, name, type, entity_id, created_at FROM devices")
+            cursor.execute("INSERT INTO devices_migration (id, name, type, entity_id, created_at) SELECT id, name, type, entity_id, created_at FROM devices WHERE type != 'heating'")
             cursor.execute("DROP TABLE devices")
             cursor.execute("ALTER TABLE devices_migration RENAME TO devices")
-            logger.info("Devices table successfully migrated with 'blinds', 'rain', and 'heating' support.")
+            logger.info("Devices table successfully migrated without 'heating'.")
         # Seed default test use case if table is empty
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM use_cases")
@@ -297,6 +340,42 @@ def init_db() -> None:
                 ),
             )
 
+        # Seed default check_alarm use case if none exists
+        cursor.execute("SELECT COUNT(*) FROM use_cases WHERE function_name = 'check_alarm'")
+        if cursor.fetchone()[0] == 0:
+            now_utc = datetime.now(timezone.utc).isoformat()
+            cursor.execute(
+                """
+                INSERT INTO use_cases (name, function_name, description, section, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    "check_alarm",
+                    "check_alarm",
+                    "Evaluates sensor activity against threshold rules and fires alarm alerts",
+                    "alarm",
+                    now_utc,
+                ),
+            )
+
+        # Seed default fire_alarm use case if none exists
+        cursor.execute("SELECT COUNT(*) FROM use_cases WHERE function_name = 'fire_alarm'")
+        if cursor.fetchone()[0] == 0:
+            now_utc = datetime.now(timezone.utc).isoformat()
+            cursor.execute(
+                """
+                INSERT INTO use_cases (name, function_name, description, section, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    "fire_alarm",
+                    "fire_alarm",
+                    "Fires alarm alert notifications and voice announcements as configured",
+                    "alarm",
+                    now_utc,
+                ),
+            )
+
         # Assign sections for irrigation and blinds use cases if blank
         conn.execute(
             """
@@ -346,26 +425,9 @@ def init_db() -> None:
                     now_utc,
                 ),
             )
-        # Migration: Ensure existing send_telegram_alert has section='notification'
-        conn.execute("UPDATE use_cases SET section = 'notification' WHERE function_name = 'send_telegram_alert' AND (section IS NULL OR section = '')")
-
-        # Seed default send_telegram_alert use case if none exists
-        cursor.execute("SELECT COUNT(*) FROM use_cases WHERE function_name = 'send_telegram_alert'")
-        if cursor.fetchone()[0] == 0:
-            now_utc = datetime.now(timezone.utc).isoformat()
-            cursor.execute(
-                """
-                INSERT INTO use_cases (name, function_name, description, section, created_at)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    "send_telegram_alert",
-                    "send_telegram_alert",
-                    "Sends an alert notification message to Telegram",
-                    "notification",
-                    now_utc,
-                ),
-            )
+        # Migration: Remove notification use cases from use_cases table
+        conn.execute("DELETE FROM use_cases WHERE function_name = 'send_telegram_alert'")
+        conn.execute("UPDATE use_cases SET section = 'general' WHERE section = 'notification'")
 
         conn.execute(
             """
@@ -377,6 +439,26 @@ def init_db() -> None:
             """
         )
 
+        # Seed default heating_helper_entity setting if not present
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM settings WHERE key = 'heating_helper_entity'")
+        if cursor.fetchone()[0] == 0:
+            now_utc = datetime.now(timezone.utc).isoformat()
+            cursor.execute(
+                "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                ("heating_helper_entity", "", now_utc),
+            )
+
+        # Seed default heating_heater_entities setting if not present
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM settings WHERE key = 'heating_heater_entities'")
+        if cursor.fetchone()[0] == 0:
+            now_utc = datetime.now(timezone.utc).isoformat()
+            cursor.execute(
+                "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                ("heating_heater_entities", "[]", now_utc),
+            )
+
         # Seed default heating_interval_minutes setting if not present
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM settings WHERE key = 'heating_interval_minutes'")
@@ -387,47 +469,42 @@ def init_db() -> None:
                 ("heating_interval_minutes", "5", now_utc),
             )
 
-        # Seed default start_heating use case if none exists
-        cursor.execute("SELECT id FROM use_cases WHERE function_name = 'start_heating'")
-        if not cursor.fetchone():
-            now_utc = datetime.now(timezone.utc).isoformat()
-            cursor.execute(
-                """
-                INSERT INTO use_cases (name, function_name, description, section, created_at)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    "start_heating",
-                    "start_heating",
-                    "Activates or deactivates the heating system (action: on/off)",
-                    "heating_control",
-                    now_utc,
-                ),
-            )
-
-        # Seed default Heating Control use case (executing control_heating under heating_control)
-        cursor.execute("SELECT id FROM use_cases WHERE name = 'Heating Control'")
-        existing_hc = cursor.fetchone()
-        if not existing_hc:
-            now_utc = datetime.now(timezone.utc).isoformat()
-            cursor.execute(
-                """
-                INSERT INTO use_cases (name, function_name, description, section, created_at)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    "Heating Control",
-                    "control_heating",
-                    "Reviews active heating map and regulates heating devices with map temperature",
-                    "heating_control",
-                    now_utc,
-                ),
-            )
+        # Seed default Heating use case (executing control_heating under heating)
+        cursor.execute("SELECT id FROM use_cases WHERE name = 'Heating'")
+        existing_h = cursor.fetchone()
+        if not existing_h:
+            cursor.execute("SELECT id FROM use_cases WHERE name = 'Heating Control'")
+            existing_hc = cursor.fetchone()
+            if existing_hc:
+                conn.execute(
+                    "UPDATE use_cases SET name = 'Heating', function_name = 'control_heating', section = 'heating' WHERE id = ?",
+                    (existing_hc[0],),
+                )
+            else:
+                now_utc = datetime.now(timezone.utc).isoformat()
+                cursor.execute(
+                    """
+                    INSERT INTO use_cases (name, function_name, description, section, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "Heating",
+                        "control_heating",
+                        "Reviews active heating map and regulates heating devices with map temperature",
+                        "heating",
+                        now_utc,
+                    ),
+                )
         else:
-            conn.execute("UPDATE use_cases SET function_name = 'control_heating', section = 'heating_control' WHERE id = ?", (existing_hc[0],))
+            conn.execute(
+                "UPDATE use_cases SET function_name = 'control_heating', section = 'heating' WHERE id = ?",
+                (existing_h[0],),
+            )
 
-        # Clean up unused heating use cases and remove legacy 'heating' section
-        conn.execute("DELETE FROM use_cases WHERE name IN ('Heating Recurrent', 'set_heating_map')")
+        # Clean up unused heating use cases and remove default start_heating use case
+        conn.execute("DELETE FROM use_cases WHERE name IN ('Heating Recurrent', 'set_heating_map', 'start_heating') OR function_name = 'start_heating'")
+        conn.execute("UPDATE use_cases SET section = 'heating' WHERE section IN ('heating_control', 'heating_recurrent')")
+        conn.execute("UPDATE use_cases SET name = 'Heating' WHERE name = 'Heating Control'")
 
         # Ensure default notification_only use case exists with do_nothing function
         cursor.execute("SELECT id FROM use_cases WHERE function_name = 'do_nothing'")
@@ -442,19 +519,18 @@ def init_db() -> None:
                     "Notification Only",
                     "do_nothing",
                     "Performs no system action. Useful for schedules or event triggers used solely to send notifications",
-                    "notification",
+                    "general",
                     now_utc,
                 ),
             )
-        conn.execute("UPDATE use_cases SET section = 'heating_control' WHERE section = 'heating'")
 
-        # Ensure start_heating and Heating Control are assigned to 'heating_control' section
+        # Ensure Heating use case is assigned to 'heating' section
         conn.execute(
             """
             UPDATE use_cases
-            SET section = 'heating_control'
-            WHERE (function_name = 'start_heating' OR function_name = 'control_heating' OR LOWER(name) LIKE '%heating%')
-              AND (section IS NULL OR section = '' OR section = 'heating')
+            SET section = 'heating'
+            WHERE (function_name = 'control_heating' OR LOWER(name) LIKE '%heating%')
+              AND (section IS NULL OR section = '' OR section IN ('heating_control', 'heating_recurrent'))
             """
         )
 
@@ -522,6 +598,8 @@ def db_create_schedule(
     data: Optional[Any] = "{}",
     notify: int = 0,
     notification_message: Optional[str] = None,
+    speak: int = 0,
+    speak_message: Optional[str] = None,
     block: int = 0,
 ) -> Dict[str, Any]:
     """Persist a new schedule into SQLite."""
@@ -534,16 +612,18 @@ def db_create_schedule(
 
     clean_notify = 1 if notify else 0
     clean_notif_msg = (notification_message or "").strip()
+    clean_speak = 1 if speak else 0
+    clean_speak_msg = (speak_message or "").strip()
     clean_block = 1 if block else 0
 
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO schedules (name, type, trigger_spec, use_case, data, notify, notification_message, block, is_active, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            INSERT INTO schedules (name, type, trigger_spec, use_case, data, notify, notification_message, speak, speak_message, block, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
             """,
-            (name, schedule_type, trigger_spec, use_case, clean_data, clean_notify, clean_notif_msg, clean_block, now_utc),
+            (name, schedule_type, trigger_spec, use_case, clean_data, clean_notify, clean_notif_msg, clean_speak, clean_speak_msg, clean_block, now_utc),
         )
         new_id = cursor.lastrowid
         cursor.execute("SELECT * FROM schedules WHERE id = ?", (new_id,))
@@ -596,6 +676,8 @@ def db_update_schedule(
     data: Optional[Any] = None,
     notify: Optional[int] = None,
     notification_message: Optional[str] = None,
+    speak: Optional[int] = None,
+    speak_message: Optional[str] = None,
     block: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     """Update an existing schedule in SQLite."""
@@ -619,6 +701,14 @@ def db_update_schedule(
         if notification_message is not None:
             clean_notif_msg = notification_message.strip()
 
+        clean_speak = current_dict.get("speak", 0)
+        if speak is not None:
+            clean_speak = 1 if speak else 0
+
+        clean_speak_msg = current_dict.get("speak_message", "")
+        if speak_message is not None:
+            clean_speak_msg = speak_message.strip()
+
         clean_block = current_dict.get("block", 0)
         if block is not None:
             clean_block = 1 if block else 0
@@ -626,10 +716,10 @@ def db_update_schedule(
         cursor.execute(
             """
             UPDATE schedules
-            SET name = ?, type = ?, trigger_spec = ?, use_case = ?, is_active = ?, data = ?, notify = ?, notification_message = ?, block = ?
+            SET name = ?, type = ?, trigger_spec = ?, use_case = ?, is_active = ?, data = ?, notify = ?, notification_message = ?, speak = ?, speak_message = ?, block = ?
             WHERE id = ?
             """,
-            (name, schedule_type, trigger_spec, use_case, is_active, clean_data, clean_notify, clean_notif_msg, clean_block, schedule_id),
+            (name, schedule_type, trigger_spec, use_case, is_active, clean_data, clean_notify, clean_notif_msg, clean_speak, clean_speak_msg, clean_block, schedule_id),
         )
         if cursor.rowcount == 0:
             return None
@@ -760,7 +850,7 @@ def db_delete_use_case(use_case_id: int) -> bool:
 # Devices CRUD
 # ==========================================
 
-VALID_DEVICE_TYPES = ("light", "irrigation", "temperature", "movement", "presence", "blinds", "rain", "heating")
+VALID_DEVICE_TYPES = ("light", "irrigation", "temperature", "movement", "presence", "blinds", "rain", "door")
 
 
 def db_list_devices(device_type: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -874,6 +964,8 @@ def db_create_event_definition(
     holiday: str = "all_days",
     notify: int = 0,
     notification_message: Optional[str] = None,
+    speak: int = 0,
+    speak_message: Optional[str] = None,
     is_active: int = 1,
 ) -> Dict[str, Any]:
     """Create and insert a new event definition."""
@@ -886,15 +978,17 @@ def db_create_event_definition(
     clean_holiday = holiday.strip() if holiday and holiday.strip() in ("all_days", "holiday", "not_holiday") else "all_days"
     clean_notify = 1 if notify else 0
     clean_notif_msg = (notification_message or "").strip()
+    clean_speak = 1 if speak else 0
+    clean_speak_msg = (speak_message or "").strip()
 
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO event_definitions (name, type, parameter, use_case, data, holiday, notify, notification_message, is_active, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO event_definitions (name, type, parameter, use_case, data, holiday, notify, notification_message, speak, speak_message, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (name.strip(), event_type.strip(), parameter.strip(), use_case.strip(), data_str, clean_holiday, clean_notify, clean_notif_msg, int(is_active), now_utc),
+            (name.strip(), event_type.strip(), parameter.strip(), use_case.strip(), data_str, clean_holiday, clean_notify, clean_notif_msg, clean_speak, clean_speak_msg, int(is_active), now_utc),
         )
         new_id = cursor.lastrowid
         cursor.execute("SELECT * FROM event_definitions WHERE id = ?", (new_id,))
@@ -940,6 +1034,8 @@ def db_update_event_definition(
     holiday: str = "all_days",
     notify: Optional[int] = None,
     notification_message: Optional[str] = None,
+    speak: Optional[int] = None,
+    speak_message: Optional[str] = None,
     is_active: int = 1,
 ) -> Optional[Dict[str, Any]]:
     """Update an existing event definition."""
@@ -965,13 +1061,21 @@ def db_update_event_definition(
         if notification_message is not None:
             clean_notif_msg = notification_message.strip()
 
+        clean_speak = current_dict.get("speak", 0)
+        if speak is not None:
+            clean_speak = 1 if speak else 0
+
+        clean_speak_msg = current_dict.get("speak_message", "")
+        if speak_message is not None:
+            clean_speak_msg = speak_message.strip()
+
         cursor.execute(
             """
             UPDATE event_definitions
-            SET name = ?, type = ?, parameter = ?, use_case = ?, data = ?, holiday = ?, notify = ?, notification_message = ?, is_active = ?
+            SET name = ?, type = ?, parameter = ?, use_case = ?, data = ?, holiday = ?, notify = ?, notification_message = ?, speak = ?, speak_message = ?, is_active = ?
             WHERE id = ?
             """,
-            (name.strip(), event_type.strip(), parameter.strip(), use_case.strip(), data_str, clean_holiday, clean_notify, clean_notif_msg, int(is_active), definition_id),
+            (name.strip(), event_type.strip(), parameter.strip(), use_case.strip(), data_str, clean_holiday, clean_notify, clean_notif_msg, clean_speak, clean_speak_msg, int(is_active), definition_id),
         )
         if cursor.rowcount == 0:
             return None
@@ -1289,7 +1393,11 @@ def db_set_active_heating_map(map_id: int) -> Dict[str, Any]:
 
 
 def db_get_heating_state() -> Dict[str, Any]:
-    """Retrieve heating system state (row id=1), including active heating map."""
+    """
+    Retrieve heating system state (row id=1), including active heating map.
+    Notice: heating on/off state is NOT stored in SQLite db. Instead, it is dynamically
+    queried from the configured heating helper entity in Home Assistant.
+    """
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM heating_state WHERE id = 1")
@@ -1298,8 +1406,8 @@ def db_get_heating_state() -> Dict[str, Any]:
             now_utc = datetime.now(timezone.utc).isoformat()
             cursor.execute(
                 """
-                INSERT OR REPLACE INTO heating_state (id, state, deactivated_until, active_map_id, updated_at)
-                VALUES (1, 'on', NULL, NULL, ?)
+                INSERT OR REPLACE INTO heating_state (id, deactivated_until, active_map_id, updated_at)
+                VALUES (1, NULL, NULL, ?)
                 """,
                 (now_utc,),
             )
@@ -1307,6 +1415,25 @@ def db_get_heating_state() -> Dict[str, Any]:
             row = cursor.fetchone()
 
         state_dict = dict(row)
+
+        # Helper entity & dynamic live state from Home Assistant
+        helper_entity = db_get_setting("heating_helper_entity", "") or ""
+        state_dict["helper_entity"] = helper_entity
+        dynamic_state = "off"
+        if helper_entity:
+            try:
+                from app.homeassistant import get_entity_state
+            except ImportError:
+                from homeassistant import get_entity_state
+            try:
+                st = get_entity_state(helper_entity)
+                if st and st.strip().lower() in ("on", "heat"):
+                    dynamic_state = "on"
+            except Exception as exc:
+                logger.warning("Could not query helper entity '%s' state: %s", helper_entity, exc)
+
+        state_dict["state"] = dynamic_state
+        state_dict["helper_state"] = dynamic_state
 
         # Check active map
         active_map_id = state_dict.get("active_map_id")
@@ -1326,15 +1453,15 @@ def db_get_heating_state() -> Dict[str, Any]:
 
 
 def db_set_heating_state(
-    state: str,
+    state: Optional[str] = None,
     deactivated_until: Optional[str] = None,
     active_map_id: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Update heating system state ('on' or 'off') and optional deactivated_until / active_map_id."""
-    clean_state = state.strip().lower()
-    if clean_state not in ("on", "off"):
-        raise ValueError(f"Invalid heating state '{state}'. Must be 'on' or 'off'")
-
+    """
+    Update heating system settings (deactivated_until / active_map_id).
+    Notice: heating on/off state is NOT persisted in SQLite; state is derived dynamically
+    from the configured helper entity in Home Assistant.
+    """
     now_utc = datetime.now(timezone.utc).isoformat()
     with get_db() as conn:
         cursor = conn.cursor()
@@ -1344,15 +1471,14 @@ def db_set_heating_state(
 
         cursor.execute(
             """
-            INSERT INTO heating_state (id, state, deactivated_until, active_map_id, updated_at)
-            VALUES (1, ?, ?, ?, ?)
+            INSERT INTO heating_state (id, deactivated_until, active_map_id, updated_at)
+            VALUES (1, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
-                state = excluded.state,
                 deactivated_until = excluded.deactivated_until,
                 active_map_id = excluded.active_map_id,
                 updated_at = excluded.updated_at
             """,
-            (clean_state, deactivated_until, map_id_val, now_utc),
+            (deactivated_until, map_id_val, now_utc),
         )
 
     return db_get_heating_state()
@@ -1399,7 +1525,17 @@ def db_get_all_settings() -> Dict[str, Any]:
                 try:
                     result[r[0]] = float(val)
                 except ValueError:
-                    result[r[0]] = val
+                    if (val.startswith("[") and val.endswith("]")) or (val.startswith("{") and val.endswith("}")):
+                        try:
+                            result[r[0]] = json.loads(val)
+                        except Exception:
+                            try:
+                                import ast
+                                result[r[0]] = ast.literal_eval(val)
+                            except Exception:
+                                result[r[0]] = val
+                    else:
+                        result[r[0]] = val
         return result
 
 

@@ -31,19 +31,13 @@ describe('HeatingComponent', () => {
 
   const mockHeatingStatusResponse: HeatingStatusResponse = {
     state: 'on',
+    helper_entity: 'input_boolean.calefaccion',
+    helper_state: 'on',
     deactivated_until: null,
     updated_at: '2026-10-25T17:00:00Z',
     active_map_id: 1,
     active_map: mockHeatingMap,
-    devices: [
-      {
-        id: 1,
-        name: 'Living Room Radiator',
-        type: 'heating',
-        entity_id: 'climate.living_room',
-        created_at: '2026-10-25T16:00:00Z',
-      },
-    ],
+    devices: [],
     temperature_devices: [
       {
         id: 104,
@@ -65,6 +59,18 @@ describe('HeatingComponent', () => {
   beforeEach(async () => {
     mockHeatingService = {
       getHeatingState: vi.fn().mockReturnValue(of(mockHeatingStatusResponse)),
+      getHeatingSettings: vi.fn().mockReturnValue(of({
+        heating_helper_entity: 'input_boolean.calefaccion',
+        heating_interval_minutes: 5,
+      })),
+      updateHeatingSettings: vi.fn().mockReturnValue(of({
+        status: 'success',
+        message: 'Updated',
+        settings: {
+          heating_helper_entity: 'input_boolean.calefaccion',
+          heating_interval_minutes: 5,
+        },
+      })),
       setHeatingState: vi.fn().mockReturnValue(of({
         status: 'success',
         message: 'Heating updated',

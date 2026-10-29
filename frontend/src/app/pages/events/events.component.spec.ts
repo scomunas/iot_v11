@@ -222,4 +222,46 @@ describe('EventsComponent', () => {
     component.setEventType('sunrise');
     expect(component.formType).toBe('sunrise');
   });
+
+  it('should support speak and speak_message in event modal', () => {
+    let capturedPayload: any = null;
+    mockEventsService.createEventDefinition = (p: any) => {
+      capturedPayload = p;
+      return of({ message: 'Created', event_definition: { id: 20, ...p, created_at: '' } });
+    };
+
+    component.openCreateModal();
+    expect(component.formSpeak).toBe(0);
+    expect(component.formSpeakMessage).toBe('');
+
+    component.formName = 'Spoken Rain Alarm';
+    component.formType = 'rain';
+    component.formParameter = 'start';
+    component.formUseCase = 'test_create_file';
+    component.formSpeak = 1;
+    component.formSpeakMessage = 'Rain detected announcement';
+    component.saveEventDefinition();
+
+    expect(capturedPayload).toBeTruthy();
+    expect(capturedPayload.speak).toBe(1);
+    expect(capturedPayload.speak_message).toBe('Rain detected announcement');
+
+    // Edit modal loads speak values
+    const defToEdit = {
+      id: 7,
+      name: 'Evening Speech Event',
+      type: 'sunset',
+      parameter: '19:00',
+      use_case: 'test_create_file',
+      data: '{}',
+      holiday: 'all_days',
+      speak: 1,
+      speak_message: 'Sunset announcement',
+      is_active: 1,
+      created_at: '2026-10-24',
+    };
+    component.openEditModal(defToEdit);
+    expect(component.formSpeak).toBe(1);
+    expect(component.formSpeakMessage).toBe('Sunset announcement');
+  });
 });

@@ -16,6 +16,24 @@ FALLBACK_ENTITIES: List[Dict[str, Any]] = [
         "current_position": 100,
     },
     {
+        "entity_id": "media_player.todos_los_altavoces",
+        "friendly_name": "Todos los altavoces",
+        "domain": "media_player",
+        "state": "idle",
+    },
+    {
+        "entity_id": "media_player.salon",
+        "friendly_name": "Altavoz Salón",
+        "domain": "media_player",
+        "state": "idle",
+    },
+    {
+        "entity_id": "media_player.cocina",
+        "friendly_name": "Altavoz Cocina",
+        "domain": "media_player",
+        "state": "idle",
+    },
+    {
         "entity_id": "cover.bedroom_blind",
         "friendly_name": "Bedroom Window Blind",
         "domain": "cover",
@@ -71,6 +89,12 @@ FALLBACK_ENTITIES: List[Dict[str, Any]] = [
         "state": "off",
     },
     {
+        "entity_id": "binary_sensor.front_door",
+        "friendly_name": "Puerta Principal (Front Door)",
+        "domain": "binary_sensor",
+        "state": "off",
+    },
+    {
         "entity_id": "binary_sensor.front_door_motion",
         "friendly_name": "Front Door Motion Sensor",
         "domain": "binary_sensor",
@@ -87,6 +111,12 @@ FALLBACK_ENTITIES: List[Dict[str, Any]] = [
         "friendly_name": "Owner Phone Presence",
         "domain": "device_tracker",
         "state": "home",
+    },
+    {
+        "entity_id": "input_boolean.heating_system",
+        "friendly_name": "Heating System Helper",
+        "domain": "input_boolean",
+        "state": "off",
     },
 ]
 
@@ -226,6 +256,40 @@ def fetch_homeassistant_entities() -> Dict[str, Any]:
         }
 
 
+def get_entity_state(entity_id: str) -> Optional[str]:
+    """
+    Get the current state string for an entity from Home Assistant (or fallback entities).
+    """
+    if not entity_id:
+        return None
+    hass_url = os.getenv("HASS_URL", "http://localhost:8123").rstrip("/")
+    hass_token = os.getenv("HASS_TOKEN", "").strip()
+
+    if hass_token:
+        try:
+            api_endpoint = f"{hass_url}/api/states/{entity_id}"
+            req = urllib.request.Request(
+                api_endpoint,
+                headers={
+                    "Authorization": f"Bearer {hass_token}",
+                    "Content-Type": "application/json",
+                },
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    return str(data.get("state", ""))
+        except Exception as exc:
+            logger.debug("Failed to get state for %s from HA: %s", entity_id, exc)
+
+    # Check fallback entities
+    for ent in FALLBACK_ENTITIES:
+        if ent.get("entity_id") == entity_id:
+            return str(ent.get("state", "off"))
+    return None
+
+
 def call_homeassistant_service(
     domain: str,
     service: str,
@@ -238,25 +302,36 @@ def call_homeassistant_service(
     hass_url = os.getenv("HASS_URL", "http://localhost:8123").rstrip("/")
     hass_token = os.getenv("HASS_TOKEN", "").strip()
 
-    if not hass_token:
-        # In mock mode, update the state of the fallback entity if present
-        for ent in FALLBACK_ENTITIES:
-            if ent.get("entity_id") == entity_id:
-                if service == "set_cover_position" and service_data and "position" in service_data:
-                    pos = int(service_data["position"])
-                    ent["current_position"] = pos
-                    ent["state"] = "closed" if pos == 0 else "open"
-                elif service == "open_cover":
-                    ent["current_position"] = 100
-                    ent["state"] = "open"
-                elif service == "close_cover":
-                    ent["current_position"] = 0
-                    ent["state"] = "closed"
-                elif service in ("turn_on", "open_valve"):
-                    ent["state"] = "on"
-                elif service in ("turn_off", "close_valve"):
-                    ent["state"] = "off"
+    # Track entity state in FALLBACK_ENTITIES (useful for mock mode and fallback lookups)
+    matched = False
+    for ent in FALLBACK_ENTITIES:
+        if ent.get("entity_id") == entity_id:
+            matched = True
+            if service == "set_cover_position" and service_data and "position" in service_data:
+                pos = int(service_data["position"])
+                ent["current_position"] = pos
+                ent["state"] = "closed" if pos == 0 else "open"
+            elif service == "open_cover":
+                ent["current_position"] = 100
+                ent["state"] = "open"
+            elif service == "close_cover":
+                ent["current_position"] = 0
+                ent["state"] = "closed"
+            elif service in ("turn_on", "open_valve") or (service == "set_hvac_mode" and service_data and service_data.get("hvac_mode") == "heat"):
+                ent["state"] = "on"
+            elif service in ("turn_off", "close_valve") or (service == "set_hvac_mode" and service_data and service_data.get("hvac_mode") == "off"):
+                ent["state"] = "off"
 
+    if not matched:
+        st = "on" if (service in ("turn_on", "open_valve") or (service == "set_hvac_mode" and service_data and service_data.get("hvac_mode") == "heat")) else "off"
+        FALLBACK_ENTITIES.append({
+            "entity_id": entity_id,
+            "friendly_name": entity_id,
+            "domain": domain,
+            "state": st,
+        })
+
+    if not hass_token:
         logger.info(
             "[MOCK HA] Token not configured. Simulated calling %s.%s for '%s' with data=%s",
             domain,

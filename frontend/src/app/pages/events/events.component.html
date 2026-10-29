@@ -134,6 +134,7 @@
             <th>Use Case</th>
             <th>Holiday</th>
             <th>Notify</th>
+            <th>Speak</th>
             <th>Status</th>
             <th class="actions-col">Actions</th>
           </tr>
@@ -170,6 +171,13 @@
               <td class="notify-col">
                 @if (def.notify) {
                   <span class="badge badge-notify" [title]="def.notification_message || 'Standard notification on event trigger'">🔔 Yes</span>
+                } @else {
+                  <span class="text-muted">—</span>
+                }
+              </td>
+              <td class="speak-col">
+                @if (def.speak) {
+                  <span class="badge badge-speak" [title]="def.speak_message || 'Standard speech announcement on event trigger'">📢 Yes</span>
                 } @else {
                   <span class="text-muted">—</span>
                 }
@@ -274,7 +282,19 @@
               </div>
               <div class="m-field">
                 <span class="m-label">Notify</span>
-                <span>{{ def.notify ? '🔔 Yes' : '—' }}</span>
+                @if (def.notify) {
+                  <span class="badge badge-notify" [title]="def.notification_message || 'Standard notification'">🔔 Yes</span>
+                } @else {
+                  <span class="text-muted">—</span>
+                }
+              </div>
+              <div class="m-field">
+                <span class="m-label">Speak</span>
+                @if (def.speak) {
+                  <span class="badge badge-speak" [title]="def.speak_message || 'Standard speech announcement'">📢 Yes</span>
+                } @else {
+                  <span class="text-muted">—</span>
+                }
               </div>
             </div>
 
@@ -462,6 +482,35 @@
                 class="form-control"
                 [(ngModel)]="formNotificationMessage"
                 placeholder="e.g. Sunrise triggered blinds opening"
+              />
+              <span class="form-hint">
+                Leave blank to use the standard message: <code>Event '{{ formName || 'Event' }}' triggered [{{ formType }}] -> Use case: {{ formUseCase || 'use_case' }}</code>
+              </span>
+            </div>
+          }
+
+          <!-- Speaker System Option -->
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                class="form-checkbox"
+                [checked]="formSpeak === 1"
+                (change)="formSpeak = $any($event.target).checked ? 1 : 0"
+              />
+              <span class="checkbox-text">📢 Speak announcement on trigger (Speaker System)</span>
+            </label>
+          </div>
+
+          @if (formSpeak === 1) {
+            <div class="form-group">
+              <label class="form-label" for="event-speak-msg">Custom Speech Message (Optional)</label>
+              <input
+                id="event-speak-msg"
+                type="text"
+                class="form-control"
+                [(ngModel)]="formSpeakMessage"
+                placeholder="e.g. Attention, rain has started"
               />
               <span class="form-hint">
                 Leave blank to use the standard message: <code>Event '{{ formName || 'Event' }}' triggered [{{ formType }}] -> Use case: {{ formUseCase || 'use_case' }}</code>

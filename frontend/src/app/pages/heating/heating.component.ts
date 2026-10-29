@@ -12,7 +12,7 @@ import {
   HeatingService,
   HeatingStatusResponse,
 } from '../../services/heating.service';
-import { DeviceItem, SettingsService, UseCase } from '../../services/settings.service';
+import { DeviceItem, HomeAssistantEntity, SettingsService, UseCase } from '../../services/settings.service';
 import { Schedule, SchedulesService } from '../../services/schedules.service';
 import { EventDefinition, EventsService } from '../../services/events.service';
 
@@ -39,11 +39,23 @@ export class HeatingComponent implements OnInit, OnDestroy {
 
   // Core System State Signals
   readonly heatingState = signal<'on' | 'off'>('on');
+  readonly helperEntity = signal<string>('');
+  readonly helperState = signal<'on' | 'off'>('off');
+  readonly heatingIntervalMinutes = signal<number>(5);
   readonly deactivatedUntil = signal<string | null>(null);
   readonly updatedAt = signal<string | null>(null);
   readonly heatingDevices = signal<DeviceItem[]>([]);
   readonly temperatureDevices = signal<DeviceItem[]>([]);
   readonly pendingResumeSchedules = signal<Schedule[]>([]);
+
+  // Heating Settings Modal State
+  readonly isSettingsModalOpen = signal<boolean>(false);
+  readonly isSavingHeatingSettings = signal<boolean>(false);
+  readonly hassEntities = signal<HomeAssistantEntity[]>([]);
+  formHelperEntity = '';
+  formIntervalMinutes = 5;
+  formHeaterEntities: string[] = [];
+  newModalHeaterId = '';
 
   // Heating Maps Signals
   readonly heatingMaps = signal<HeatingMap[]>([]);
@@ -82,6 +94,78 @@ export class HeatingComponent implements OnInit, OnDestroy {
   readonly inMemoryJobMap = signal<Map<string, string | null>>(new Map());
   readonly allEventDefinitions = signal<EventDefinition[]>([]);
   readonly configuredUseCases = signal<UseCase[]>([]);
+
+  loadHeatingSettings(): void {
+    this.heatingService.getHeatingSettings().subscribe({
+      next: (res) => {
+        this.helperEntity.set(res.heating_helper_entity || '');
+        this.heatingIntervalMinutes.set(res.heating_interval_minutes || 5);
+        this.formHeaterEntities = res.heating_heater_entities ? [...res.heating_heater_entities] : [];
+      },
+      error: (err) => console.error('Failed to load heating settings:', err),
+    });
+  }
+
+  addModalHeater(entityId: string): void {
+    const clean = entityId.trim();
+    if (!clean) return;
+    if (!this.formHeaterEntities.includes(clean)) {
+      this.formHeaterEntities.push(clean);
+    }
+    this.newModalHeaterId = '';
+  }
+
+  removeModalHeater(entityId: string): void {
+    this.formHeaterEntities = this.formHeaterEntities.filter((h) => h !== entityId);
+  }
+
+  isEntityInHassList(entityId: string): boolean {
+    if (!entityId) return false;
+    return this.hassEntities().some((e) => e.entity_id === entityId);
+  }
+
+  openHeatingSettingsModal(): void {
+    this.formHelperEntity = this.helperEntity();
+    this.formIntervalMinutes = this.heatingIntervalMinutes();
+    this.newModalHeaterId = '';
+    this.isSettingsModalOpen.set(true);
+    if (this.hassEntities().length === 0) {
+      this.settingsService.getHomeAssistantEntities().subscribe({
+        next: (res) => this.hassEntities.set(res.entities || []),
+        error: (err) => console.error('Failed to load HA entities:', err),
+      });
+    }
+  }
+
+  closeHeatingSettingsModal(): void {
+    this.isSettingsModalOpen.set(false);
+  }
+
+  saveHeatingGlobalSettings(): void {
+    const mins = Number(this.formIntervalMinutes) || 5;
+    const entity = (this.formHelperEntity || '').trim();
+    this.isSavingHeatingSettings.set(true);
+    this.heatingService.updateHeatingSettings({
+      heating_helper_entity: entity,
+      heating_interval_minutes: mins,
+      heating_heater_entities: this.formHeaterEntities,
+    }).subscribe({
+      next: (res) => {
+        this.isSavingHeatingSettings.set(false);
+        this.helperEntity.set(res.settings.heating_helper_entity);
+        this.heatingIntervalMinutes.set(res.settings.heating_interval_minutes);
+        this.isSettingsModalOpen.set(false);
+        this.successMessage.set('Heating settings updated successfully.');
+        setTimeout(() => this.successMessage.set(null), 3500);
+        this.loadState();
+      },
+      error: (err) => {
+        this.isSavingHeatingSettings.set(false);
+        this.errorMessage.set(`Failed to update heating settings: ${err.error?.detail || err.message}`);
+        setTimeout(() => this.errorMessage.set(null), 4000);
+      }
+    });
+  }
 
   // State Signals
   readonly loading = signal<boolean>(false);
@@ -208,11 +292,17 @@ export class HeatingComponent implements OnInit, OnDestroy {
     this.heatingService.getHeatingState().subscribe({
       next: (res: HeatingStatusResponse) => {
         this.heatingState.set(res.state);
+        if (res.helper_entity !== undefined) {
+          this.helperEntity.set(res.helper_entity || '');
+        }
+        if (res.helper_state !== undefined) {
+          this.helperState.set((res.helper_state as 'on' | 'off') || res.state || 'off');
+        }
         this.deactivatedUntil.set(res.deactivated_until ?? null);
         this.updatedAt.set(res.updated_at ?? null);
         this.activeMapId.set(res.active_map_id ?? null);
         this.activeMap.set(res.active_map ?? null);
-        this.heatingDevices.set(res.devices || []);
+        this.heatingDevices.set([]);
         this.temperatureDevices.set(res.temperature_devices || []);
         this.pendingResumeSchedules.set(res.pending_resume_schedules || []);
         this.isRefreshingTemps.set(false);
@@ -241,6 +331,7 @@ export class HeatingComponent implements OnInit, OnDestroy {
 
   loadAllData(): void {
     this.loading.set(true);
+    this.loadHeatingSettings();
     this.loadState();
     this.loadMaps();
     this.loadCalendar();
@@ -251,11 +342,17 @@ export class HeatingComponent implements OnInit, OnDestroy {
     this.heatingService.getHeatingState().subscribe({
       next: (res: HeatingStatusResponse) => {
         this.heatingState.set(res.state);
+        if (res.helper_entity !== undefined) {
+          this.helperEntity.set(res.helper_entity || '');
+        }
+        if (res.helper_state !== undefined) {
+          this.helperState.set((res.helper_state as 'on' | 'off') || res.state || 'off');
+        }
         this.deactivatedUntil.set(res.deactivated_until ?? null);
         this.updatedAt.set(res.updated_at ?? null);
         this.activeMapId.set(res.active_map_id ?? null);
         this.activeMap.set(res.active_map ?? null);
-        this.heatingDevices.set(res.devices || []);
+        this.heatingDevices.set([]);
         this.temperatureDevices.set(res.temperature_devices || []);
         this.pendingResumeSchedules.set(res.pending_resume_schedules || []);
         this.loading.set(false);

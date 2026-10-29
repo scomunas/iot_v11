@@ -186,4 +186,42 @@ describe('SchedulesComponent Sorting', () => {
     component.openEditModal(scheduleToEdit);
     expect(component.formData).toContain('"seconds": 600');
   });
+
+  it('should support speak and speak_message in schedule modal', () => {
+    let capturedPayload: any = null;
+    mockSchedulesService.createSchedule = (p: any) => {
+      capturedPayload = p;
+      return of({ message: 'Created', schedule: { id: 11, ...p, created_at: '' } });
+    };
+
+    component.openCreateModal();
+    expect(component.formSpeak).toBe(0);
+    expect(component.formSpeakMessage).toBe('');
+
+    component.formName = 'Spoken Lawn Watering';
+    component.formUseCase = 'test_create_file';
+    component.formSpeak = 1;
+    component.formSpeakMessage = 'Lawn watering initiated';
+    component.saveSchedule();
+
+    expect(capturedPayload).toBeTruthy();
+    expect(capturedPayload.speak).toBe(1);
+    expect(capturedPayload.speak_message).toBe('Lawn watering initiated');
+
+    // Edit modal loads speak values
+    const scheduleToEdit = {
+      id: 6,
+      name: 'Morning Speech Schedule',
+      type: 'recurrent' as const,
+      trigger_spec: '0 8 * * *',
+      use_case: 'test_create_file',
+      is_active: 1,
+      speak: 1,
+      speak_message: 'Morning speech announcement',
+      created_at: '2026-10-24',
+    };
+    component.openEditModal(scheduleToEdit);
+    expect(component.formSpeak).toBe(1);
+    expect(component.formSpeakMessage).toBe('Morning speech announcement');
+  });
 });

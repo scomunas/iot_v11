@@ -57,7 +57,53 @@ export interface TelegramSendResponse {
   text?: string;
 }
 
-export type DeviceType = 'light' | 'irrigation' | 'temperature' | 'movement' | 'presence' | 'blinds' | 'rain' | 'heating';
+export interface NotificationChannelStatus {
+  configured: boolean;
+  bot_token_configured?: boolean;
+  chat_id_configured?: boolean;
+  bot_token_masked?: string;
+  chat_id_masked?: string;
+  using_env_token?: boolean;
+  using_env_chat?: boolean;
+  effective_chat_id?: string;
+  message: string;
+}
+
+export interface NotificationChannel {
+  id: string;
+  name: string;
+  type: string;
+  enabled: boolean;
+  description: string;
+  config: Record<string, any>;
+  status?: NotificationChannelStatus;
+}
+
+export interface SpeakerSystemConfig {
+  enabled: boolean;
+  speakers: string[];
+  chime_path: string;
+  tts_platform: string;
+  volume_level: number;
+  default_message: string;
+}
+
+export interface SpeakerBroadcastResult {
+  status: string;
+  result: {
+    success: boolean;
+    simulated?: boolean;
+    speakers?: string[];
+    service?: string;
+    service_data?: any;
+    response?: any;
+    error?: string;
+    skipped?: boolean;
+    reason?: string;
+  };
+}
+
+export type DeviceType = 'light' | 'irrigation' | 'temperature' | 'movement' | 'presence' | 'blinds' | 'rain' | 'door';
 
 export interface DeviceItem {
   id: number;
@@ -234,9 +280,70 @@ export class SettingsService {
     );
   }
 
+  getNotificationChannels(): Observable<{ channels: NotificationChannel[] }> {
+    return this.http.get<{ channels: NotificationChannel[] }>(
+      `${environment.backendUrl}/notifications/channels`,
+      { headers: this.headers }
+    );
+  }
+
+  updateNotificationChannel(
+    channelId: string,
+    payload: { enabled?: boolean; name?: string; config?: Record<string, any> }
+  ): Observable<{ status: string; channel: NotificationChannel }> {
+    return this.http.put<{ status: string; channel: NotificationChannel }>(
+      `${environment.backendUrl}/notifications/channels/${channelId}`,
+      payload,
+      { headers: this.headers }
+    );
+  }
+
+  testNotificationChannel(
+    channelId: string,
+    message?: string
+  ): Observable<{ status: string; result: any }> {
+    return this.http.post<{ status: string; result: any }>(
+      `${environment.backendUrl}/notifications/test`,
+      { channel_id: channelId, message },
+      { headers: this.headers }
+    );
+  }
+
   updateSystemSettings(payload: Record<string, any>): Observable<{ message: string; settings: Record<string, any> }> {
     return this.http.put<{ message: string; settings: Record<string, any> }>(
       `${environment.backendUrl}/settings`,
+      payload,
+      { headers: this.headers }
+    );
+  }
+
+  getSpeakerConfig(): Observable<SpeakerSystemConfig> {
+    return this.http.get<SpeakerSystemConfig>(
+      `${environment.backendUrl}/speakers/config`,
+      { headers: this.headers }
+    );
+  }
+
+  updateSpeakerConfig(
+    payload: Partial<SpeakerSystemConfig>
+  ): Observable<{ status: string; config: SpeakerSystemConfig }> {
+    return this.http.put<{ status: string; config: SpeakerSystemConfig }>(
+      `${environment.backendUrl}/speakers/config`,
+      payload,
+      { headers: this.headers }
+    );
+  }
+
+  broadcastSpeaker(payload: {
+    message?: string;
+    speakers?: string[];
+    chime_path?: string;
+    tts_platform?: string;
+    volume_level?: number;
+    force?: boolean;
+  }): Observable<SpeakerBroadcastResult> {
+    return this.http.post<SpeakerBroadcastResult>(
+      `${environment.backendUrl}/speakers/broadcast`,
       payload,
       { headers: this.headers }
     );

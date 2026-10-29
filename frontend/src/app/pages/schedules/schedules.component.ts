@@ -49,6 +49,8 @@ export class SchedulesComponent implements OnInit {
   formData = '{}';
   formNotify = 0;
   formNotificationMessage = '';
+  formSpeak = 0;
+  formSpeakMessage = '';
   formBlock = 0;
 
   // Helpers for triggers
@@ -163,6 +165,8 @@ export class SchedulesComponent implements OnInit {
     this.formData = '{}';
     this.formNotify = 0;
     this.formNotificationMessage = '';
+    this.formSpeak = 0;
+    this.formSpeakMessage = '';
     this.formBlock = 0;
     this.onUseCaseChange();
 
@@ -183,6 +187,8 @@ export class SchedulesComponent implements OnInit {
     this.formUseCase = schedule.use_case;
     this.formNotify = schedule.notify || 0;
     this.formNotificationMessage = schedule.notification_message || '';
+    this.formSpeak = schedule.speak || 0;
+    this.formSpeakMessage = schedule.speak_message || '';
     this.formBlock = schedule.block || 0;
 
     if (schedule.data) {
@@ -311,6 +317,8 @@ export class SchedulesComponent implements OnInit {
       data: cleanData,
       notify: this.formNotify,
       notification_message: this.formNotify === 1 ? this.formNotificationMessage.trim() : '',
+      speak: this.formSpeak,
+      speak_message: this.formSpeak === 1 ? this.formSpeakMessage.trim() : '',
       block: this.formBlock,
     };
 

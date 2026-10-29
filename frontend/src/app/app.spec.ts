@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+﻿import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
@@ -29,11 +29,11 @@ describe('App', () => {
     expect(compiled.querySelector('.app-title')?.textContent).toContain('IoT');
   });
 
-  it('should display version v11.0.4', async () => {
+  it('should display version v11.1.0', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('.version-value')?.textContent).toContain('v11.0.4');
+    expect(compiled.querySelector('.version-value')?.textContent).toContain('v11.1.0');
   });
 
   it('should display Backend, Scheduler, Database, and Home Assistant status items in the sidebar bottom', async () => {
@@ -43,7 +43,7 @@ describe('App', () => {
     const serviceNames = Array.from(compiled.querySelectorAll('.system-status-widget .status-name')).map(
       (el) => el.textContent?.trim()
     );
-    expect(serviceNames).toEqual(['Backend', 'Scheduler', 'Database', 'Home Assistant']);
+    expect(serviceNames).toEqual(['Backend', 'Scheduler', 'Database', 'Home Assistant', 'Telegram']);
 
     const sidebarText = compiled.querySelector('.sidebar-bottom')?.textContent || '';
     expect(sidebarText).not.toContain('Online');

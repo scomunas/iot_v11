@@ -107,6 +107,8 @@ export class IrrigationComponent implements OnInit {
   formScheduleIsActive: number = 1;
   formScheduleNotify: number = 0;
   formScheduleNotificationMessage: string = '';
+  formScheduleSpeak: number = 0;
+  formScheduleSpeakMessage: string = '';
 
   // Additional form fields for backward compatibility
   formUseCase: string = '';
@@ -138,6 +140,8 @@ export class IrrigationComponent implements OnInit {
   formEventIsActive: number = 1;
   formEventNotify: number = 0;
   formEventNotificationMessage: string = '';
+  formEventSpeak: number = 0;
+  formEventSpeakMessage: string = '';
 
   getHolidayLabel(holiday?: string): string {
     switch (holiday) {
@@ -348,6 +352,8 @@ export class IrrigationComponent implements OnInit {
     this.formScheduleIsActive = 1;
     this.formScheduleNotify = 0;
     this.formScheduleNotificationMessage = '';
+    this.formScheduleSpeak = 0;
+    this.formScheduleSpeakMessage = '';
     this.formIsActive = 1;
 
     this.isScheduleModalOpen.set(true);
@@ -361,6 +367,8 @@ export class IrrigationComponent implements OnInit {
     this.formScheduleIsActive = schedule.is_active;
     this.formScheduleNotify = schedule.notify ?? 0;
     this.formScheduleNotificationMessage = schedule.notification_message || '';
+    this.formScheduleSpeak = schedule.speak ?? 0;
+    this.formScheduleSpeakMessage = schedule.speak_message || '';
     this.formIsActive = schedule.is_active;
 
     const params = this.parseData(schedule.data);
@@ -495,6 +503,8 @@ export class IrrigationComponent implements OnInit {
       data: dataPayload,
       notify: this.formScheduleNotify,
       notification_message: this.formScheduleNotify === 1 ? this.formScheduleNotificationMessage.trim() : '',
+      speak: this.formScheduleSpeak,
+      speak_message: this.formScheduleSpeak === 1 ? this.formScheduleSpeakMessage.trim() : '',
     };
 
     if (this.scheduleModalMode() === 'create') {
@@ -535,6 +545,8 @@ export class IrrigationComponent implements OnInit {
       data: schedule.data || '{}',
       notify: schedule.notify ?? 0,
       notification_message: schedule.notification_message || '',
+      speak: schedule.speak ?? 0,
+      speak_message: schedule.speak_message || '',
     }).subscribe({
       next: () => {
         this.showSuccess(`Schedule #${schedule.id} ${newActive ? 'activated' : 'paused'}.`);
@@ -614,6 +626,8 @@ export class IrrigationComponent implements OnInit {
     this.formEventIsActive = 1;
     this.formEventNotify = 0;
     this.formEventNotificationMessage = '';
+    this.formEventSpeak = 0;
+    this.formEventSpeakMessage = '';
 
     this.isEventModalOpen.set(true);
   }
@@ -633,6 +647,8 @@ export class IrrigationComponent implements OnInit {
     this.formEventIsActive = eventDef.is_active;
     this.formEventNotify = eventDef.notify ?? 0;
     this.formEventNotificationMessage = eventDef.notification_message || '';
+    this.formEventSpeak = eventDef.speak ?? 0;
+    this.formEventSpeakMessage = eventDef.speak_message || '';
 
     const params = this.parseData(eventDef.data);
     this.formEventDurationSeconds = Number(params.seconds) || 300;
@@ -680,6 +696,8 @@ export class IrrigationComponent implements OnInit {
       is_active: this.formEventIsActive,
       notify: this.formEventNotify,
       notification_message: this.formEventNotify === 1 ? this.formEventNotificationMessage.trim() : '',
+      speak: this.formEventSpeak,
+      speak_message: this.formEventSpeak === 1 ? this.formEventSpeakMessage.trim() : '',
     };
 
     if (this.eventModalMode() === 'create') {
@@ -721,6 +739,8 @@ export class IrrigationComponent implements OnInit {
       is_active: newActive,
       notify: eventDef.notify ?? 0,
       notification_message: eventDef.notification_message || '',
+      speak: eventDef.speak ?? 0,
+      speak_message: eventDef.speak_message || '',
     }).subscribe({
       next: () => {
         this.showSuccess(`Event #${eventDef.id} ${newActive ? 'activated' : 'paused'}.`);

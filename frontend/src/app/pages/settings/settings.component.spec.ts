@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { SettingsComponent } from './settings.component';
+import { AlarmService } from '../../services/alarm.service';
 import {
   DevicesResponse,
   HomeAssistantEntitiesResponse,
@@ -96,6 +97,37 @@ describe('SettingsComponent', () => {
     error: null,
   };
 
+const mockAlarmService = {
+    getAlarmConfig: vi.fn().mockReturnValue(
+      of({
+        status: 'success',
+        config: {
+          enabled: true,
+          helper_entity: 'input_boolean.alarma',
+          notification_message: 'Alert on {entity}!',
+          speak_message: 'Alarma en {entity}',
+          default_trigger: 2,
+          default_seconds: 60,
+          retention_seconds: 300,
+          delay_seconds: 30,
+        },
+      })
+    ),
+    updateAlarmConfig: vi.fn().mockReturnValue(
+      of({
+        status: 'success',
+        config: {
+          enabled: true,
+          notification_message: 'Alert on {entity}!',
+          speak_message: 'Alarma en {entity}',
+          default_trigger: 3,
+          default_seconds: 45,
+          delay_seconds: 30,
+        },
+      })
+    ),
+  };
+
   beforeEach(async () => {
     mockSettingsService = {
       getUseCases: () => of(mockResponse),
@@ -126,7 +158,11 @@ describe('SettingsComponent', () => {
       ),
       getSystemSettings: vi.fn().mockReturnValue(
         of({
-          settings: { heating_interval_minutes: 15 },
+          settings: {
+            heating_interval_minutes: 15,
+            heating_helper_entity: 'input_boolean.calefaccion_master',
+            heating_heater_entities: ['switch.caldera'],
+          },
         })
       ),
       updateSystemSettings: vi.fn().mockReturnValue(
@@ -135,12 +171,84 @@ describe('SettingsComponent', () => {
           settings: { heating_interval_minutes: 20 },
         })
       ),
+      getNotificationChannels: vi.fn().mockReturnValue(
+        of({
+          channels: [
+            {
+              id: 'telegram',
+              name: 'Telegram',
+              type: 'telegram',
+              enabled: true,
+              description: 'Telegram alerts',
+              config: { chat_id: '-1003245904342', bot_token: '' },
+              status: {
+                configured: true,
+                message: 'Telegram active',
+                effective_chat_id: '-1003245904342',
+              },
+            },
+          ],
+        })
+      ),
+      updateNotificationChannel: vi.fn().mockReturnValue(
+        of({
+          status: 'success',
+          channel: {
+            id: 'telegram',
+            name: 'Telegram',
+            type: 'telegram',
+            enabled: true,
+            description: 'Telegram alerts',
+            config: { chat_id: '-1003245904342', bot_token: '' },
+          },
+        })
+      ),
+      testNotificationChannel: vi.fn().mockReturnValue(
+        of({
+          status: 'success',
+          result: { success: true },
+        })
+      ),
+      getSpeakerConfig: vi.fn().mockReturnValue(
+        of({
+          enabled: true,
+          speakers: ['media_player.todos_los_altavoces'],
+          chime_path: 'bells',
+          tts_platform: 'tts.google_translate_say',
+          volume_level: 0.8,
+          default_message: 'Test announcement message',
+        })
+      ),
+      updateSpeakerConfig: vi.fn().mockReturnValue(
+        of({
+          status: 'success',
+          config: {
+            enabled: true,
+            speakers: ['media_player.todos_los_altavoces'],
+            chime_path: 'bells',
+            tts_platform: 'tts.google_translate_say',
+            volume_level: 0.8,
+            default_message: 'Test announcement message',
+          },
+        })
+      ),
+      broadcastSpeaker: vi.fn().mockReturnValue(
+        of({
+          status: 'success',
+          result: {
+            success: true,
+            simulated: true,
+            speakers: ['media_player.todos_los_altavoces'],
+          },
+        })
+      ),
     };
 
     await TestBed.configureTestingModule({
       imports: [SettingsComponent],
       providers: [
         { provide: SettingsService, useValue: mockSettingsService },
+        { provide: AlarmService, useValue: mockAlarmService },
       ],
     }).compileComponents();
 
@@ -217,7 +325,7 @@ describe('SettingsComponent', () => {
     expect(component.formDeviceEntityId).toBe('switch.garden_irrigation_zone1');
   });
 
-  it('should support blinds, rain, and heating device types in deviceTypes and badge info', () => {
+  it('should support blinds, rain, and door device types in deviceTypes, and not heating', () => {
     const blindsInfo = component.getDeviceTypeInfo('blinds');
     expect(blindsInfo).toBeTruthy();
     expect(blindsInfo.label).toBe('Blinds');
@@ -229,10 +337,113 @@ describe('SettingsComponent', () => {
     expect(rainInfo.icon).toBe('🌧️');
     expect(component.deviceTypes.some((t) => t.id === 'rain')).toBe(true);
 
-    const heatingInfo = component.getDeviceTypeInfo('heating');
-    expect(heatingInfo).toBeTruthy();
-    expect(heatingInfo.label).toBe('Heating');
-    expect(heatingInfo.icon).toBe('🔥');
-    expect(component.deviceTypes.some((t) => t.id === 'heating')).toBe(true);
+    expect(component.deviceTypes.some((t) => (t.id as string) === 'heating')).toBe(false);
+
+    const doorInfo = component.getDeviceTypeInfo('door');
+    expect(doorInfo).toBeTruthy();
+    expect(doorInfo.label).toBe('Door');
+    expect(doorInfo.icon).toBe('🚪');
+    expect(component.deviceTypes.some((t) => t.id === 'door')).toBe(true);
+  });
+  it('should load speaker configuration on init', () => {
+    expect(mockSettingsService.getSpeakerConfig).toHaveBeenCalled();
+    expect(component.speakerEnabled).toBe(true);
+    expect(component.selectedSpeakers).toEqual(['media_player.todos_los_altavoces']);
+    expect(component.speakerChimePath).toBe('bells');
+    expect(component.speakerVolumeLevel).toBe(0.8);
+  });
+
+  it('should allow adding and removing speakers', () => {
+    component.addSpeaker('media_player.salon');
+    expect(component.selectedSpeakers).toContain('media_player.salon');
+
+    component.removeSpeaker('media_player.salon');
+    expect(component.selectedSpeakers).not.toContain('media_player.salon');
+  });
+
+  it('should save speaker configuration when saveSpeakerConfig is called', () => {
+    component.speakerEnabled = true;
+    component.selectedSpeakers = ['media_player.salon'];
+    component.speakerChimePath = 'chord';
+    component.speakerVolumeLevel = 0.75;
+    component.speakerDefaultMessage = 'Presence detected';
+
+    component.saveSpeakerConfig();
+
+    expect(mockSettingsService.updateSpeakerConfig).toHaveBeenCalledWith({
+      enabled: true,
+      speakers: ['media_player.salon'],
+      chime_path: 'chord',
+      tts_platform: 'tts.google_translate_say',
+      volume_level: 0.75,
+      default_message: 'Presence detected',
+    });
+  });
+
+  it('should broadcast test speaker audio when testSpeakerBroadcast is called', () => {
+    component.testSpeakerBroadcast();
+    expect(mockSettingsService.broadcastSpeaker).toHaveBeenCalled();
+  });
+it('should load alarm configuration on init', () => {
+    expect(mockAlarmService.getAlarmConfig).toHaveBeenCalled();
+    expect(component.alarmEnabled).toBe(true);
+    expect(component.alarmNotificationMessage).toBe('Alert on {entity}!');
+    expect(component.alarmSpeakMessage).toBe('Alarma en {entity}');
+    expect(component.alarmDefaultTrigger).toBe(2);
+    expect(component.alarmDefaultSeconds).toBe(60);
+    expect(component.alarmRetentionSeconds).toBe(300);
+    expect(component.alarmDelaySeconds).toBe(30);
+  });
+
+  it('should insert dynamic tags into alarm notification and speak template', () => {
+    component.alarmNotificationMessage = 'Alert:';
+    component.insertTagIntoAlarmNotification('{device_name}');
+    expect(component.alarmNotificationMessage).toBe('Alert: {device_name}');
+    component.insertTagIntoAlarmNotification('{device_type}');
+    expect(component.alarmNotificationMessage).toBe('Alert: {device_name} {device_type}');
+
+    component.alarmSpeakMessage = '';
+    component.insertTagIntoAlarmSpeak('{device_name}');
+    expect(component.alarmSpeakMessage).toBe('{device_name}');
+  });
+
+  it('should save alarm configuration when saveAlarmConfig is called', () => {
+    component.alarmEnabled = true;
+    component.alarmHelperEntity = 'input_boolean.alarma';
+    component.alarmNotificationMessage = 'Alert on {entity}!';
+    component.alarmSpeakMessage = 'Alarma en {entity}';
+    component.alarmDefaultTrigger = 3;
+    component.alarmDefaultSeconds = 45;
+
+    component.saveAlarmConfig();
+
+    expect(mockAlarmService.updateAlarmConfig).toHaveBeenCalledWith({
+      enabled: true,
+      helper_entity: 'input_boolean.alarma',
+      notification_message: 'Alert on {entity}!',
+      speak_message: 'Alarma en {entity}',
+      default_trigger: 3,
+      default_seconds: 45,
+      retention_seconds: 300,
+      delay_seconds: 30,
+    });
+    expect(component.savingAlarmConfig()).toBe(false);
+  });
+it('should allow adding and removing heating heater entities and saving heating settings', () => {
+    component.heatingHelperEntity.set('input_boolean.calefaccion');
+    component.heatingIntervalMinutes.set(15);
+    component.addHeater('switch.caldera');
+    component.addHeater('switch.radiador');
+    expect(component.heatingHeaters()).toEqual(['switch.caldera', 'switch.radiador']);
+
+    component.removeHeater('switch.radiador');
+    expect(component.heatingHeaters()).toEqual(['switch.caldera']);
+
+    component.saveHeatingSettings();
+    expect(mockSettingsService.updateSystemSettings).toHaveBeenCalledWith({
+      heating_interval_minutes: 15,
+      heating_helper_entity: 'input_boolean.calefaccion',
+      heating_heater_entities: ['switch.caldera'],
+    });
   });
 });

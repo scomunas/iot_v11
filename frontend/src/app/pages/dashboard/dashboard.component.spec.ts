@@ -1,11 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
+import { vi } from 'vitest';
 import { DashboardComponent } from './dashboard.component';
 import { HeatingService } from '../../services/heating.service';
 import { SettingsService } from '../../services/settings.service';
 import { SchedulesService } from '../../services/schedules.service';
 import { EventsService } from '../../services/events.service';
+import { AlarmService } from '../../services/alarm.service';
 
 describe('DashboardComponent', () => {
   let component: DashboardComponent;
@@ -13,6 +15,7 @@ describe('DashboardComponent', () => {
   let mockSettingsService: any;
   let mockSchedulesService: any;
   let mockEventsService: any;
+  let mockAlarmService: any;
 
   beforeEach(async () => {
     mockHeatingService = {
@@ -33,6 +36,7 @@ describe('DashboardComponent', () => {
         devices: [
           { id: 1, name: 'Living Room Blind', type: 'blinds', entity_id: 'cover.living_room_blind', created_at: '' },
           { id: 2, name: 'Garden Sprinklers', type: 'irrigation', entity_id: 'switch.garden_irrigation_zone1', created_at: '' },
+          { id: 3, name: 'Front Door PIR', type: 'door', entity_id: 'binary_sensor.front_door', created_at: '' },
         ]
       }),
       getHomeAssistantEntities: () => of({
@@ -41,6 +45,7 @@ describe('DashboardComponent', () => {
         entities: [
           { entity_id: 'cover.living_room_blind', friendly_name: 'Living Room Blind', domain: 'cover', state: 'open', current_position: 100 },
           { entity_id: 'switch.garden_irrigation_zone1', friendly_name: 'Garden Zone 1', domain: 'switch', state: 'off' },
+          { entity_id: 'binary_sensor.front_door', friendly_name: 'Front Door PIR', domain: 'binary_sensor', state: 'off' },
         ]
       }),
       triggerDeviceAction: (id: number, action: string, position?: number) => of({
@@ -55,12 +60,13 @@ describe('DashboardComponent', () => {
     };
 
     mockSchedulesService = {
-      getSchedules: () => of({
+      getSchedules: vi.fn().mockReturnValue(of({
         schedules: [
           { id: 1, name: 'Auto - Blinds - Morning', use_case: 'blinds', type: 'recurrent', trigger_spec: '0 8 * * *', is_active: 1, created_at: '' },
           { id: 2, name: 'Auto - Irrigation - Evening', use_case: 'irrigation', type: 'recurrent', trigger_spec: '0 20 * * *', is_active: 1, created_at: '' },
+          { id: 3, name: 'Fire Alarm - Front Door PIR (deferred)', use_case: 'fire_alarm', type: 'one-time', trigger_spec: '2026-10-29T12:01:00Z', is_active: 1, created_at: '' },
         ]
-      }),
+      })),
     };
 
     mockEventsService = {
@@ -72,6 +78,48 @@ describe('DashboardComponent', () => {
       }),
     };
 
+    mockAlarmService = {
+      getAlarmConfig: () => of({
+        status: 'success',
+        config: {
+          enabled: true,
+          default_trigger: 2,
+          default_seconds: 60,
+          delay_seconds: 30,
+          notification_message: 'Alert: {entity}',
+          speak_message: 'Alarm {entity}',
+        }
+      }),
+      updateAlarmConfig: vi.fn().mockImplementation((payload: any) => of({
+        status: 'success',
+        message: 'Updated',
+        config: {
+          enabled: payload.enabled,
+          default_trigger: 2,
+          default_seconds: 60,
+        }
+      })),
+      getAlarmHistory: () => of({
+        status: 'success',
+        events: [
+          { entity: 'binary_sensor.front_door', date: '2026-10-29T12:00:00Z' }
+        ]
+      }),
+      getAlarmRules: () => of({
+        status: 'success',
+        rules: [
+          { id: 1, name: 'Auto - Alarm - Front Door PIR', is_active: 1, data: JSON.stringify({ entity: 'binary_sensor.front_door', trigger: 2, seconds: 60, notification: true, speak: false }) }
+        ]
+      }),
+      parseRuleData: (data: any) => ({
+        entity: 'binary_sensor.front_door',
+        trigger: 2,
+        seconds: 60,
+        notification: true,
+        speak: false,
+      }),
+    };
+
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
       providers: [
@@ -80,6 +128,7 @@ describe('DashboardComponent', () => {
         { provide: SettingsService, useValue: mockSettingsService },
         { provide: SchedulesService, useValue: mockSchedulesService },
         { provide: EventsService, useValue: mockEventsService },
+        { provide: AlarmService, useValue: mockAlarmService },
       ]
     }).compileComponents();
 
@@ -96,6 +145,35 @@ describe('DashboardComponent', () => {
     expect(component.irrigationDevices().length).toBe(1);
     expect(component.blindsSchedulesCount()).toBe(1);
     expect(component.irrigationSchedulesCount()).toBe(1);
+    expect(component.alarmEnabled()).toBe(true);
+    expect(component.alarmEvents().length).toBe(1);
+    expect(component.alarmRulesCount()).toBe(1);
+    expect(component.scheduledAlarmsToFire().length).toBe(1);
+    expect(component.scheduledAlarmsToFire()[0].name).toContain('Fire Alarm');
+  });
+
+  it('should toggle alarm master state', () => {
+    const mockEventOff = { target: { checked: false } } as unknown as Event;
+    component.toggleAlarmMaster(mockEventOff);
+    expect(mockAlarmService.updateAlarmConfig).toHaveBeenCalledWith({ enabled: false });
+    expect(component.alarmEnabled()).toBe(false);
+  });
+
+  it('should properly resolve alarm device names and types', () => {
+    expect(component.getAlarmDeviceName('binary_sensor.front_door')).toBe('Front Door PIR');
+    expect(component.getAlarmDeviceType('binary_sensor.front_door')).toBe('door');
+    expect(component.getAlarmDeviceTypeIcon('door')).toBe('🚪');
+    expect(component.getAlarmDeviceTypeIcon('movement')).toBe('🚶');
+  });
+
+  it('should parse rule data and calculate event hit counts', () => {
+    expect(component.alarmRules().length).toBe(1);
+    const rule = component.alarmRules()[0];
+    const data = component.getRuleData(rule);
+    expect(data.entity).toBe('binary_sensor.front_door');
+    expect(data.trigger).toBe(2);
+    expect(component.getRuleEventCount('binary_sensor.front_door')).toBe(1);
+    expect(component.getRuleEventCount('binary_sensor.unknown')).toBe(0);
   });
 
   it('should toggle heating master power', () => {

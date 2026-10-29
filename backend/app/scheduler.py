@@ -242,9 +242,11 @@ async def fn_move_blind(
                         "entity_id": entity_id,
                         "position": position,
                         "not_before": "",
+                        "deferred": True,
                     }
 
-                    sched_name = name or f"Auto - Blinds (not_before {not_before_str})"
+                    base_name = name or f"Auto - Blinds (not_before {not_before_str})"
+                    sched_name = f"{base_name} (deferred)" if "(deferred)" not in base_name.lower() else base_name
                     new_schedule = create_and_register_schedule(
                         name=sched_name,
                         schedule_type="one-time",
@@ -318,16 +320,24 @@ async def fn_add_holiday(
 
     holiday_name = params.get("name") or default_name
 
+    cancelled_count = 0
+    if when_val == "today":
+        cancelled_count = cancel_deferred_one_time_schedules()
+
     # Check if holiday already exists
     existing = db_get_holiday_by_date(target_date)
     if existing:
         msg = f"Holiday for {target_date} ({when_val}) already exists in holidays list (ID #{existing['id']})"
+        if when_val == "today":
+            msg += f" - Cancelled {cancelled_count} deferred schedule(s)"
         logger.info("[add_holiday] %s", msg)
         return msg
 
     try:
         created = db_create_holiday(date=target_date, name=holiday_name)
         msg = f"Added holiday for {target_date} ({when_val}) with ID #{created['id']}"
+        if when_val == "today":
+            msg += f" - Cancelled {cancelled_count} deferred schedule(s)"
         logger.info("[add_holiday] %s", msg)
         return msg
     except Exception as exc:
@@ -525,6 +535,138 @@ async def fn_send_telegram_alert(
         return f"Failed to deliver Telegram alert: {res.get('error')}"
 
 
+async def fn_broadcast_speaker(
+    schedule_id: Optional[int] = None,
+    name: Optional[str] = None,
+    schedule_type: Optional[str] = None,
+    use_case: Optional[str] = None,
+    data: Optional[Any] = None,
+) -> str:
+    """
+    Executable function: broadcast_speaker
+    Broadcasts voice audio using Home Assistant chime_tts.say service.
+    Accepts string message or JSON dict with 'message', 'speakers', 'chime_path', 'tts_platform', 'volume_level'.
+    """
+    import json
+    try:
+        from app.speakers import broadcast_chime_tts
+    except ImportError:
+        from speakers import broadcast_chime_tts
+
+    params = {}
+    if isinstance(data, str) and data.strip():
+        try:
+            params = json.loads(data)
+        except Exception:
+            params = {"message": data.strip()}
+    elif isinstance(data, dict):
+        params = data
+
+    message = params.get("message")
+    speakers = params.get("speakers")
+    chime_path = params.get("chime_path")
+    tts_platform = params.get("tts_platform")
+    volume_level = params.get("volume_level")
+
+    res = broadcast_chime_tts(
+        message=message,
+        speakers=speakers,
+        chime_path=chime_path,
+        tts_platform=tts_platform,
+        volume_level=volume_level,
+    )
+    return f"Broadcast Chime TTS result: {res.get('service')} to {res.get('speakers')}"
+
+
+async def fn_check_alarm(
+    schedule_id: Optional[int] = None,
+    name: Optional[str] = None,
+    schedule_type: Optional[str] = None,
+    use_case: Optional[str] = None,
+    data: Optional[Any] = None,
+) -> str:
+    """
+    Executable function: check_alarm
+    Handles an on-memory event list with entity and date.
+    Evaluates if events for entity within seconds exceed trigger count.
+    If count > trigger: fires notification and/or speak according to parameters and general alarm config.
+    """
+    import json
+    try:
+        from app.alarm import evaluate_alarm_event
+    except ImportError:
+        from alarm import evaluate_alarm_event
+
+    params = {}
+    if isinstance(data, str) and data.strip():
+        try:
+            params = json.loads(data)
+        except Exception:
+            params = {}
+    elif isinstance(data, dict):
+        params = dict(data)
+
+    entity = str(params.get("entity") or name or "unknown_sensor").strip()
+    try:
+        trigger = int(params.get("trigger", 2))
+    except (ValueError, TypeError):
+        trigger = 2
+
+    try:
+        seconds = int(params.get("seconds", 60))
+    except (ValueError, TypeError):
+        seconds = 60
+
+    notification = params.get("notification", True)
+    speak = params.get("speak", False)
+
+    res = await evaluate_alarm_event(
+        entity=entity,
+        trigger=trigger,
+        seconds=seconds,
+        notification=notification,
+        speak=speak,
+    )
+    return res.get("message", "Alarm check executed")
+
+
+async def fn_fire_alarm(
+    schedule_id: Optional[int] = None,
+    name: Optional[str] = None,
+    schedule_type: Optional[str] = None,
+    use_case: Optional[str] = None,
+    data: Optional[Any] = None,
+) -> str:
+    """
+    Executable function: fire_alarm
+    Checks if alarm is on/mounted (armed) before sending notification or audio.
+    Launches only if alarm is still on.
+    """
+    import json
+    try:
+        from app.alarm import is_alarm_on, fire_alarm_actions, delete_deferred_alarm_schedules
+    except ImportError:
+        from alarm import is_alarm_on, fire_alarm_actions, delete_deferred_alarm_schedules
+
+    if not is_alarm_on():
+        msg = "Alarm firing skipped: alarm is NOT on/mounted (disarmed/off). Notification and audio suppressed."
+        logger.warning("[fire_alarm] %s", msg)
+        delete_deferred_alarm_schedules()
+        return msg
+
+    params = {}
+    if isinstance(data, str) and data.strip():
+        try:
+            params = json.loads(data)
+        except Exception:
+            params = {}
+    elif isinstance(data, dict):
+        params = dict(data)
+
+    res = await fire_alarm_actions(params)
+    return res.get("message", "Alarm fired")
+
+
 async def fn_start_heating(
     schedule_id: Optional[int] = None,
     name: Optional[str] = None,
@@ -535,9 +677,10 @@ async def fn_start_heating(
     """
     Executable function: start_heating
     Receives in data the 'action' parameter ('on' or 'off').
-    Activates or deactivates the heating system and stores heating state in SQLite.
-    When deactivated ('off'): turns off all configured devices marked as 'heating'.
-    When activated ('on'): does nothing to devices for the moment.
+    Starts or stops the configured heating helper entity in Home Assistant and synchronizes
+    the recurrent heating schedule.
+    Notice: heating on/off state is NOT stored in SQLite DB; it is dynamically queried
+    from the helper entity in Home Assistant.
     """
     import json
 
@@ -556,47 +699,87 @@ async def fn_start_heating(
 
     action = str(params.get("action", "on")).strip().lower()
     deactivated_until = params.get("deactivated_until")
+    source = params.get("source", "")
+    helper_entity = (db_get_setting("heating_helper_entity", "") or "").strip()
 
-    if action == "off":
-        db_set_heating_state(state="off", deactivated_until=deactivated_until)
-        sync_heating_recurrent_schedule(False)
-        heating_devices = db_list_devices(device_type="heating")
-        switched_off = []
-        for dev in heating_devices:
-            entity_id = dev.get("entity_id")
-            if not entity_id:
-                continue
-            domain = entity_id.split(".")[0] if "." in entity_id else "switch"
+    # When not triggered directly by a Home Assistant event, update helper entity in Home Assistant
+    if source != "homeassistant_event" and helper_entity:
+        domain = helper_entity.split(".")[0] if "." in helper_entity else "homeassistant"
+        if action == "off":
             if domain == "climate":
                 call_homeassistant_service(
                     domain="climate",
                     service="set_hvac_mode",
-                    entity_id=entity_id,
+                    entity_id=helper_entity,
                     service_data={"hvac_mode": "off"},
                 )
             else:
                 call_homeassistant_service(
                     domain=domain,
                     service="turn_off",
-                    entity_id=entity_id,
+                    entity_id=helper_entity,
                 )
-            switched_off.append(entity_id)
+        else:
+            if domain == "climate":
+                call_homeassistant_service(
+                    domain="climate",
+                    service="set_hvac_mode",
+                    entity_id=helper_entity,
+                    service_data={"hvac_mode": "heat"},
+                )
+            else:
+                call_homeassistant_service(
+                    domain=domain,
+                    service="turn_on",
+                    entity_id=helper_entity,
+                )
 
-        msg = f"Heating system deactivated (state: off). Switched off {len(switched_off)} heating device(s)."
+    if action == "off":
+        db_set_heating_state(deactivated_until=deactivated_until)
+        sync_heating_recurrent_schedule(False)
+        # Turn OFF all configured heater entities
+        try:
+            raw_heaters = db_get_setting("heating_heater_entities", "[]") or "[]"
+            try:
+                heater_entities = json.loads(raw_heaters) if isinstance(raw_heaters, str) else list(raw_heaters)
+                if not isinstance(heater_entities, list):
+                    heater_entities = []
+            except Exception:
+                import ast
+                try:
+                    parsed = ast.literal_eval(raw_heaters)
+                    heater_entities = [str(e).strip() for e in parsed if str(e).strip()] if isinstance(parsed, list) else []
+                except Exception:
+                    heater_entities = []
+            for h_ent in heater_entities:
+                h_ent = str(h_ent).strip()
+                if not h_ent:
+                    continue
+                domain = h_ent.split(".")[0] if "." in h_ent else "homeassistant"
+                try:
+                    if domain == "climate":
+                        call_homeassistant_service(domain="climate", service="set_hvac_mode", entity_id=h_ent, service_data={"hvac_mode": "off"})
+                    else:
+                        call_homeassistant_service(domain=domain, service="turn_off", entity_id=h_ent)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        msg = f"Heating system deactivated (helper: '{helper_entity or 'none'}')."
         if deactivated_until:
             msg += f" Deactivated until {deactivated_until}."
         logger.info("[start_heating] %s", msg)
         return msg
     else:
         # action == "on"
-        db_set_heating_state(state="on", deactivated_until=None)
+        db_set_heating_state(deactivated_until=None)
         sync_heating_recurrent_schedule(True)
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(fn_control_heating())
         except Exception:
             pass
-        msg = "Heating system activated (state: on). Recurrent heating schedule activated."
+        msg = f"Heating system activated (helper: '{helper_entity or 'none'}'). Recurrent heating schedule activated."
         logger.info("[start_heating] %s", msg)
         return msg
 
@@ -704,13 +887,11 @@ async def fn_control_heating(
         except Exception:
             rules = {}
 
-    # 3. Get temperature sensors and heating devices
+    # 3. Get temperature sensors
     temp_devices = db_list_devices(device_type="temperature")
-    heating_devices = db_list_devices(device_type="heating")
-
-    if not heating_devices:
-        msg = f"Heating map '{map_name}' active, but no heating devices are configured in the system."
-        logger.warning("[control_heating] %s", msg)
+    if not temp_devices:
+        msg = f"Heating map '{map_name}' active, but no temperature sensors are configured."
+        logger.info("[control_heating] %s", msg)
         return msg
 
     # 4. Fetch Home Assistant entities
@@ -766,49 +947,67 @@ async def fn_control_heating(
         else:
             satisfied.append(f"{dev_name}: {current_temp}°C >= {min_temp}°C")
 
-    # 6. Apply heating actions
+    # 6. Evaluate temperature thresholds & fire heater entities
+    raw_heaters = db_get_setting("heating_heater_entities", "[]") or "[]"
+    try:
+        heater_entities = json.loads(raw_heaters) if isinstance(raw_heaters, str) else list(raw_heaters)
+        if not isinstance(heater_entities, list):
+            heater_entities = []
+    except Exception:
+        import ast
+        try:
+            parsed = ast.literal_eval(raw_heaters)
+            heater_entities = [str(e).strip() for e in parsed if str(e).strip()] if isinstance(parsed, list) else []
+        except Exception:
+            heater_entities = []
+
     if below_threshold:
-        # At least one sensor below rule: start all devices marked as heating at full power (30.0°C)
-        # to ensure all target temperatures across all rooms are effectively reached
-        heating_setpoint = 30.0
-        for dev in heating_devices:
-            entity_id = dev.get("entity_id")
-            if not entity_id:
-                continue
-            domain = entity_id.split(".")[0] if "." in entity_id else "switch"
-            if domain == "climate":
-                call_homeassistant_service(domain="climate", service="set_hvac_mode", entity_id=entity_id, service_data={"hvac_mode": "heat"})
-                call_homeassistant_service(domain="climate", service="set_temperature", entity_id=entity_id, service_data={"temperature": heating_setpoint})
-            else:
-                call_homeassistant_service(domain=domain, service="turn_on", entity_id=entity_id, service_data={"temperature": heating_setpoint})
-
         msg = (
             f"Heating control evaluated (Map: '{map_name}'). "
-            f"Heating REQUIRED by: [{', '.join(below_threshold)}]. "
-            f"Started {len(heating_devices)} heating device(s) with temperature {heating_setpoint}°C."
+            f"Heating REQUIRED by: [{', '.join(below_threshold)}]."
         )
+        # Fire heaters: turn ON each configured heater entity
+        for h_ent in heater_entities:
+            h_ent = str(h_ent).strip()
+            if not h_ent:
+                continue
+            domain = h_ent.split(".")[0] if "." in h_ent else "homeassistant"
+            try:
+                if domain == "climate":
+                    call_homeassistant_service(domain="climate", service="set_hvac_mode", entity_id=h_ent, service_data={"hvac_mode": "heat"})
+                else:
+                    call_homeassistant_service(domain=domain, service="turn_on", entity_id=h_ent)
+                logger.info("[control_heating] Fired heater entity ON: %s", h_ent)
+            except Exception as exc:
+                logger.warning("[control_heating] Failed to turn ON heater entity '%s': %s", h_ent, exc)
+        if heater_entities:
+            msg += f" Fired {len(heater_entities)} heater(s) ON: [{', '.join(heater_entities)}]."
     elif satisfied:
-        # If temperature is greater or equal: stop all devices marked as heating
-        for dev in heating_devices:
-            entity_id = dev.get("entity_id")
-            if not entity_id:
-                continue
-            domain = entity_id.split(".")[0] if "." in entity_id else "switch"
-            if domain == "climate":
-                call_homeassistant_service(domain="climate", service="set_hvac_mode", entity_id=entity_id, service_data={"hvac_mode": "off"})
-            else:
-                call_homeassistant_service(domain=domain, service="turn_off", entity_id=entity_id)
-
         msg = (
             f"Heating control evaluated (Map: '{map_name}'). "
-            f"All {len(satisfied)} sensor(s) satisfied. "
-            f"Stopped {len(heating_devices)} heating device(s)."
+            f"All {len(satisfied)} temperature sensor(s) satisfied: [{', '.join(satisfied)}]."
         )
+        # All satisfied: turn OFF each configured heater entity
+        for h_ent in heater_entities:
+            h_ent = str(h_ent).strip()
+            if not h_ent:
+                continue
+            domain = h_ent.split(".")[0] if "." in h_ent else "homeassistant"
+            try:
+                if domain == "climate":
+                    call_homeassistant_service(domain="climate", service="set_hvac_mode", entity_id=h_ent, service_data={"hvac_mode": "off"})
+                else:
+                    call_homeassistant_service(domain=domain, service="turn_off", entity_id=h_ent)
+                logger.info("[control_heating] Fired heater entity OFF: %s", h_ent)
+            except Exception as exc:
+                logger.warning("[control_heating] Failed to turn OFF heater entity '%s': %s", h_ent, exc)
+        if heater_entities:
+            msg += f" Fired {len(heater_entities)} heater(s) OFF: [{', '.join(heater_entities)}]."
     else:
         # No rules matched any active sensors
         msg = (
             f"Heating control evaluated (Map: '{map_name}'). "
-            f"No active temperature rules defined for available sensors. Heating devices untouched."
+            f"No active temperature rules defined for available sensors."
         )
 
     logger.info("[control_heating] %s", msg)
@@ -891,6 +1090,24 @@ SYSTEM_FUNCTIONS: Dict[str, Dict[str, Any]] = {
         "description": "Changes the active heating map rule set",
         "handler": fn_set_heating_map,
     },
+    "broadcast_speaker": {
+        "id": "broadcast_speaker",
+        "name": "Broadcast Speaker (Chime TTS)",
+        "description": "Broadcasts voice audio announcement with chime via Home Assistant chime_tts.say service",
+        "handler": fn_broadcast_speaker,
+    },
+    "check_alarm": {
+        "id": "check_alarm",
+        "name": "Check Alarm Threshold",
+        "description": "Monitors sensor event frequency in-memory and triggers alarm notification and speech when count exceeds threshold within seconds",
+        "handler": fn_check_alarm,
+    },
+    "fire_alarm": {
+        "id": "fire_alarm",
+        "name": "Fire Alarm",
+        "description": "Fires alarm alert notifications and voice audio announcements according to configured parameters",
+        "handler": fn_fire_alarm,
+    },
 }
 
 
@@ -928,60 +1145,19 @@ async def dispatch_notifications(
     source_name: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Finds all use cases with section='notification' and executes them with the notification message.
+    Dispatch a notification message across all active notification channels (e.g. Telegram).
     """
-    notification_use_cases = db_list_use_cases_by_section("notification")
-    if not notification_use_cases:
-        logger.info(
-            "[NOTIFICATION] Notification requested for %s #%s ('%s'), but no use cases are marked with section='notification'",
-            source_type,
-            source_id,
-            source_name,
-        )
-        return []
+    try:
+        from app.notifications import dispatch_notifications as notif_dispatch
+    except ImportError:
+        from notifications import dispatch_notifications as notif_dispatch
 
-    logger.info(
-        "[NOTIFICATION] Dispatching notification for %s #%s ('%s') to %d use case(s) with message: '%s'",
-        source_type,
-        source_id,
-        source_name,
-        len(notification_use_cases),
-        message,
+    return await notif_dispatch(
+        message=message,
+        source_type=source_type,
+        source_id=source_id,
+        source_name=source_name,
     )
-
-    results = []
-    for uc in notification_use_cases:
-        fn_name = uc.get("function_name")
-        fn_info = SYSTEM_FUNCTIONS.get(fn_name)
-        if not fn_info:
-            logger.warning("[NOTIFICATION] Function '%s' for use case '%s' not found", fn_name, uc.get("name"))
-            continue
-
-        handler = fn_info["handler"]
-        try:
-            sig = inspect.signature(handler)
-            kwargs_to_pass = {
-                "schedule_id": source_id,
-                "name": f"Notification: {source_name}",
-                "schedule_type": "notification",
-                "use_case": uc.get("name"),
-            }
-            notif_data = {"message": message}
-            if "data" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-                kwargs_to_pass["data"] = notif_data
-
-            if inspect.iscoroutinefunction(handler):
-                res = await handler(**kwargs_to_pass)
-            else:
-                res = handler(**kwargs_to_pass)
-
-            logger.info("[NOTIFICATION] Notification use case '%s' (%s) executed: %s", uc.get("name"), fn_name, res)
-            results.append({"use_case": uc.get("name"), "status": "success", "result": str(res)})
-        except Exception as exc:
-            logger.exception("[NOTIFICATION] Error executing notification use case '%s': %s", uc.get("name"), exc)
-            results.append({"use_case": uc.get("name"), "status": "error", "error": str(exc)})
-
-    return results
 
 
 async def execute_schedule_task(
@@ -992,6 +1168,8 @@ async def execute_schedule_task(
     data: Optional[Any] = None,
     notify: int = 0,
     notification_message: Optional[str] = None,
+    speak: int = 0,
+    speak_message: Optional[str] = None,
 ) -> None:
     """
     Dispatcher triggered by the scheduler.
@@ -999,15 +1177,19 @@ async def execute_schedule_task(
     If notify is enabled, dispatches notifications to all use cases in the 'notification' section.
     """
     logger.info("Dispatching task for schedule #%s ('%s') - Type: %s (notify: %s)", schedule_id, name, schedule_type, notify)
+    global _last_cancelled_deferred_count
+    _last_cancelled_deferred_count = None
     
     # 1. Check code-registered handlers
     handler = TASK_HANDLERS.get(use_case)
 
-    # 2. If not registered in code, check DB use_cases table
+    # 2. If not registered in code, check DB use_cases table or SYSTEM_FUNCTIONS directly
     if not handler:
         uc_record = db_get_use_case_by_name(use_case)
         if uc_record and uc_record.get("function_name") in SYSTEM_FUNCTIONS:
             handler = SYSTEM_FUNCTIONS[uc_record["function_name"]]["handler"]
+        elif use_case in SYSTEM_FUNCTIONS:
+            handler = SYSTEM_FUNCTIONS[use_case]["handler"]
         else:
             handler = default_task_handler
 
@@ -1027,9 +1209,12 @@ async def execute_schedule_task(
         else:
             handler(**kwargs_to_pass)
 
+        standard_msg = f"Schedule '{name}' executed successfully (Use case: {use_case})"
+        if _last_cancelled_deferred_count is not None:
+            standard_msg += f" ({_last_cancelled_deferred_count} deferred schedule(s) cancelled)"
+
         # 3. If notify is enabled, dispatch notification
         if notify:
-            standard_msg = f"Schedule '{name}' executed successfully (Use case: {use_case})"
             override_msg = (notification_message or "").strip()
             final_msg = override_msg if override_msg else standard_msg
             await dispatch_notifications(
@@ -1038,6 +1223,20 @@ async def execute_schedule_task(
                 source_id=schedule_id,
                 source_name=name,
             )
+
+        # 4. If speak is enabled, broadcast announcement via Speaker System
+        if speak:
+            try:
+                from app.speakers import broadcast_chime_tts
+            except ImportError:
+                from speakers import broadcast_chime_tts
+            override_speak = (speak_message or "").strip()
+            final_speak = override_speak if override_speak else standard_msg
+            try:
+                broadcast_chime_tts(message=final_speak, force=True)
+                logger.info("[SPEAK] Broadcasted speech for schedule #%s ('%s'): '%s'", schedule_id, name, final_speak)
+            except Exception as spk_err:
+                logger.warning("[SPEAK] Failed to broadcast speech for schedule #%s: %s", schedule_id, spk_err)
     except Exception as exc:
         logger.exception("Error executing task handler for schedule #%s: %s", schedule_id, exc)
     finally:
@@ -1098,9 +1297,76 @@ async def dispatch_event_triggers(event_type: str, parameter: str = "") -> List[
     """
     Find active event definitions matching event_type and execute their configured use cases.
     Respects the 'holiday' filter: 'all_days', 'holiday', or 'not_holiday'.
+    Also checks if event corresponds to the configured heating helper entity to fire start_heating.
     """
-    matching_definitions = db_get_active_event_definitions_by_type(event_type)
     triggered = []
+
+    # Check if this event corresponds to the configured heating helper entity
+    helper_entity = (db_get_setting("heating_helper_entity", "") or "").strip()
+    if helper_entity and event_type.strip().lower() == helper_entity.lower():
+        action = parameter.strip().lower() if parameter.strip().lower() in ("on", "off") else "on"
+        try:
+            from app.homeassistant import FALLBACK_ENTITIES
+        except ImportError:
+            from homeassistant import FALLBACK_ENTITIES
+        matched_fb = False
+        for ent in FALLBACK_ENTITIES:
+            if ent.get("entity_id") == helper_entity:
+                ent["state"] = action
+                matched_fb = True
+        if not matched_fb:
+            FALLBACK_ENTITIES.append({
+                "entity_id": helper_entity,
+                "friendly_name": helper_entity,
+                "domain": helper_entity.split(".")[0] if "." in helper_entity else "unknown",
+                "state": action,
+            })
+
+        logger.info("[EVENT TRIGGER] Home Assistant helper '%s' changed state to '%s' -> firing start_heating", event_type, action)
+        msg = await fn_start_heating(data={"action": action, "source": "homeassistant_event"})
+        triggered.append({
+            "definition_id": None,
+            "name": f"Home Assistant Helper ({helper_entity})",
+            "use_case": "start_heating",
+            "result": msg,
+        })
+
+# Check if this event corresponds to the configured alarm helper entity
+    try:
+        from app.alarm import get_alarm_config, update_alarm_config
+    except ImportError:
+        from alarm import get_alarm_config, update_alarm_config
+    alarm_cfg = get_alarm_config()
+    alarm_helper = (alarm_cfg.get("helper_entity") or "").strip()
+    if alarm_helper and event_type.strip().lower() == alarm_helper.lower():
+        action = parameter.strip().lower() if parameter.strip().lower() in ("on", "off", "armed", "disarmed") else "on"
+        is_armed = action in ("on", "armed", "armed_home", "armed_away", "true", "1")
+        try:
+            from app.homeassistant import FALLBACK_ENTITIES
+        except ImportError:
+            from homeassistant import FALLBACK_ENTITIES
+        matched_fb = False
+        for ent in FALLBACK_ENTITIES:
+            if ent.get("entity_id") == alarm_helper:
+                ent["state"] = "on" if is_armed else "off"
+                matched_fb = True
+        if not matched_fb:
+            FALLBACK_ENTITIES.append({
+                "entity_id": alarm_helper,
+                "friendly_name": alarm_helper,
+                "domain": alarm_helper.split(".")[0] if "." in alarm_helper else "unknown",
+                "state": "on" if is_armed else "off",
+            })
+        update_alarm_config(enabled=is_armed)
+        logger.info("[EVENT TRIGGER] Home Assistant alarm helper '%s' changed state to '%s' -> alarm enabled=%s", event_type, action, is_armed)
+        triggered.append({
+            "definition_id": None,
+            "name": f"Home Assistant Alarm Helper ({alarm_helper})",
+            "use_case": "set_alarm_state",
+            "result": f"Alarm {'armed' if is_armed else 'disarmed'} via helper event",
+        })
+
+    matching_definitions = db_get_active_event_definitions_by_type(event_type)
 
     for defn in matching_definitions:
         def_id = defn["id"]
@@ -1172,6 +1438,9 @@ async def dispatch_event_triggers(event_type: str, parameter: str = "") -> List[
             else:
                 handler = default_task_handler
 
+        global _last_cancelled_deferred_count
+        _last_cancelled_deferred_count = None
+
         try:
             sig = inspect.signature(handler)
             kwargs_to_pass = {
@@ -1189,19 +1458,39 @@ async def dispatch_event_triggers(event_type: str, parameter: str = "") -> List[
                 result = handler(**kwargs_to_pass)
 
             # If notify is enabled for this event definition, dispatch notifications
-            def_notify = defn.get("notify", 0)
+            param_str = f": {parameter}" if parameter else ""
+            standard_msg = f"Event '{name}' triggered [{event_type}{param_str}] -> Use case: {use_case}"
+            if _last_cancelled_deferred_count is not None:
+                standard_msg += f" ({_last_cancelled_deferred_count} deferred schedule(s) cancelled)"
+
+            def_notify = 0 if use_case == "check_alarm" else defn.get("notify", 0)
             def_notif_msg = defn.get("notification_message", "")
             if def_notify:
-                param_str = f": {parameter}" if parameter else ""
-                standard_msg = f"Event '{name}' triggered [{event_type}{param_str}] -> Use case: {use_case}"
                 override_msg = (def_notif_msg or "").strip()
                 final_msg = override_msg if override_msg else standard_msg
+
                 await dispatch_notifications(
                     message=final_msg,
                     source_type="event",
                     source_id=def_id,
                     source_name=name,
                 )
+
+            # If speak is enabled for this event definition, broadcast announcement via Speaker System
+            def_speak = 0 if use_case == "check_alarm" else defn.get("speak", 0)
+            def_speak_msg = defn.get("speak_message", "")
+            if def_speak:
+                try:
+                    from app.speakers import broadcast_chime_tts
+                except ImportError:
+                    from speakers import broadcast_chime_tts
+                override_speak = (def_speak_msg or "").strip()
+                final_speak = override_speak if override_speak else standard_msg
+                try:
+                    broadcast_chime_tts(message=final_speak, force=True)
+                    logger.info("[SPEAK] Broadcasted speech for event #%s ('%s'): '%s'", def_id, name, final_speak)
+                except Exception as spk_err:
+                    logger.warning("[SPEAK] Failed to broadcast speech for event #%s: %s", def_id, spk_err)
 
             triggered.append({
                 "definition_id": def_id,
@@ -1291,6 +1580,8 @@ def add_job_to_memory(schedule_data: Dict[str, Any]) -> Optional[str]:
             "data": data,
             "notify": notify,
             "notification_message": notification_message,
+            "speak": schedule_data.get("speak", 0),
+            "speak_message": schedule_data.get("speak_message", ""),
         },
     )
     logger.info("Loaded schedule #%s ('%s') into memory [%s - %s]", schedule_id, name, schedule_type, trigger_spec)
@@ -1317,6 +1608,8 @@ def create_and_register_schedule(
     data: Optional[Any] = "{}",
     notify: int = 0,
     notification_message: Optional[str] = None,
+    speak: int = 0,
+    speak_message: Optional[str] = None,
     block: int = 0,
 ) -> Dict[str, Any]:
     """Validate trigger, save to SQLite, and register into the in-memory scheduler."""
@@ -1329,6 +1622,8 @@ def create_and_register_schedule(
         data=data,
         notify=notify,
         notification_message=notification_message,
+        speak=speak,
+        speak_message=speak_message,
         block=block,
     )
     add_job_to_memory(schedule_data)
@@ -1354,6 +1649,8 @@ def update_and_reschedule(
     data: Optional[Any] = None,
     notify: Optional[int] = None,
     notification_message: Optional[str] = None,
+    speak: Optional[int] = None,
+    speak_message: Optional[str] = None,
     block: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     """Validate trigger, update SQLite record, and refresh in-memory job."""
@@ -1370,6 +1667,8 @@ def update_and_reschedule(
         data=data,
         notify=notify,
         notification_message=notification_message,
+        speak=speak,
+        speak_message=speak_message,
         block=block,
     )
 
@@ -1394,6 +1693,42 @@ def delete_and_remove_schedule(schedule_id: int) -> bool:
         scheduler.remove_job(job_id)
         logger.info("Removed job '%s' from in-memory scheduler.", job_id)
     return db_delete_schedule(schedule_id)
+
+
+_last_cancelled_deferred_count: Optional[int] = None
+
+
+def cancel_deferred_one_time_schedules() -> int:
+    """
+    Cancel all active one-time schedules that were deferred (e.g. created because an event
+    arrived earlier than the not_before parameter).
+    Deletes them from SQLite and removes them from APScheduler memory.
+    Returns the number of cancelled schedules.
+    """
+    global _last_cancelled_deferred_count
+    schedules = db_list_schedules()
+    deleted_count = 0
+    for s in schedules:
+        if s.get("type") == "one-time" and s.get("is_active") == 1:
+            is_deferred = False
+            try:
+                raw_data = s.get("data")
+                s_data = json.loads(raw_data) if isinstance(raw_data, str) and raw_data.strip() else (raw_data or {})
+                if isinstance(s_data, dict) and s_data.get("deferred"):
+                    is_deferred = True
+            except Exception:
+                pass
+
+            if "(deferred)" in s.get("name", "").lower():
+                is_deferred = True
+
+            if is_deferred:
+                delete_and_remove_schedule(s["id"])
+                logger.info("[cancel_deferred] Cancelled deferred one-time schedule #%s ('%s')", s["id"], s.get("name"))
+                deleted_count += 1
+
+    _last_cancelled_deferred_count = deleted_count
+    return deleted_count
 
 
 def sync_heating_recurrent_schedule(heating_on: bool) -> Optional[Dict[str, Any]]:
@@ -1425,13 +1760,13 @@ def sync_heating_recurrent_schedule(heating_on: bool) -> Optional[Dict[str, Any]
     # 2. Find use case: prioritize use case linked to control_heating
     all_ucs = db_list_use_cases()
     ctrl_uc = next(
-        (u for u in all_ucs if u.get("function_name") == "control_heating" and u.get("section") == "heating_control"),
+        (u for u in all_ucs if u.get("function_name") == "control_heating" and u.get("section") == "heating"),
         None
     ) or next(
         (u for u in all_ucs if u.get("function_name") == "control_heating"),
         None
     )
-    uc_name = ctrl_uc["name"] if ctrl_uc else "Heating Control"
+    uc_name = ctrl_uc["name"] if ctrl_uc else "Heating"
 
     if heating_on:
         if existing_sched:
@@ -1503,8 +1838,12 @@ def get_memory_jobs_status() -> List[Dict[str, Any]]:
     jobs_info = []
     for job in scheduler.get_jobs():
         next_run_iso = None
-        if job.next_run_time:
-            next_run_iso = job.next_run_time.astimezone(APP_TIMEZONE).isoformat()
+        nrt = getattr(job, "next_run_time", None) or getattr(job, "next_fire_time", None)
+        if nrt:
+            try:
+                next_run_iso = nrt.astimezone(APP_TIMEZONE).isoformat()
+            except Exception:
+                next_run_iso = str(nrt)
         jobs_info.append({
             "job_id": job.id,
             "name": job.name,

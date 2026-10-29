@@ -24,18 +24,51 @@ client = TestClient(app)
 AUTH_HEADERS = {"X-API-Key": API_KEY}
 
 def test_notification_feature():
+    from app.database import db_get_setting, db_set_setting
+    saved_channels = db_get_setting("notification_channels")
+    try:
+        _run_notification_feature_tests()
+    finally:
+        if saved_channels is not None:
+            db_set_setting("notification_channels", saved_channels)
+
+
+def _run_notification_feature_tests():
     print("\n--- Starting Notification Parameter & Dispatch Tests ---")
 
-    # 1. Check sections include 'notification'
+    # 1. Check sections do NOT include 'notification' (notification is now a dedicated settings channel, not a use case)
     res = client.get("/use-cases", headers=AUTH_HEADERS)
     assert res.status_code == 200, res.text
     sections = res.json().get("available_sections", [])
-    assert "notification" in sections, f"Expected 'notification' in available_sections: {sections}"
-    print("PASS: 'notification' is available in use-cases sections")
+    assert "notification" not in sections, f"Expected 'notification' to be removed from available_sections: {sections}"
+    print("PASS: 'notification' is no longer in use-cases sections")
 
-    # 2. Check notification use cases lookup
-    notif_use_cases = db_list_use_cases_by_section("notification")
-    print(f"PASS: db_list_use_cases_by_section('notification') returned {len(notif_use_cases)} use case(s)")
+    # 2. Check notification channels endpoint
+    channels_res = client.get("/notifications/channels", headers=AUTH_HEADERS)
+    assert channels_res.status_code == 200, channels_res.text
+    channels = channels_res.json()["channels"]
+    assert any(c["id"] == "telegram" for c in channels)
+    print(f"PASS: GET /notifications/channels returned {len(channels)} channel(s)")
+
+    # 2b. Test updating notification channel configuration
+    update_res = client.put(
+        "/notifications/channels/telegram",
+        json={"enabled": True, "config": {"chat_id": "-1003245904342"}},
+        headers=AUTH_HEADERS,
+    )
+    assert update_res.status_code == 200, update_res.text
+    assert update_res.json()["channel"]["enabled"] is True
+    print("PASS: PUT /notifications/channels/telegram updated channel successfully")
+
+    # 2c. Test sending test notification via channel endpoint
+    test_res = client.post(
+        "/notifications/test",
+        json={"channel_id": "telegram", "message": "Test alert via notifications/test"},
+        headers=AUTH_HEADERS,
+    )
+    assert test_res.status_code == 200, test_res.text
+    assert test_res.json()["status"] == "success"
+    print("PASS: POST /notifications/test sent alert successfully")
 
     # 3. Test direct dispatch_notifications
     asyncio.run(

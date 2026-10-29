@@ -49,12 +49,1062 @@
 
   <!-- Modular Settings Sections Container -->
   <div class="settings-sections">
-    <!-- SECTION 1: Use Cases (Compacted in one self-contained card) -->
+
+    <!-- SECTION 1: Heating System Settings -->
+    <div class="settings-card heating-settings-card">
+      <div class="card-header">
+        <div class="card-header-main">
+          <div class="card-icon-badge-row">
+            <div class="card-icon heating-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2c0 4.5-5 7-5 12a5 5 0 0 0 10 0c0-5-5-7.5-5-12z" />
+              </svg>
+            </div>
+            <div>
+              <div class="card-title-group">
+                <h2 class="card-title">Heating Settings</h2>
+              </div>
+              <p class="card-subtitle">
+                Configure recurrent evaluation schedule and heating regulation interval.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-header-actions">
+          <button
+            class="btn btn-primary"
+            [disabled]="isSavingSettings() || heatingIntervalMinutes() < 1"
+            (click)="saveHeatingSettings()"
+          >
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
+            </svg>
+            {{ isSavingSettings() ? 'Saving...' : 'Save Settings' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <!-- Heating Helper Entity Row -->
+        <div class="heating-setting-row">
+          <div class="setting-info">
+            <span class="setting-title">Heating Helper Entity</span>
+            <p class="setting-desc">
+              Home Assistant helper entity (e.g. <code>input_boolean.calefaccion</code>, <code>input_boolean.heating_system</code>, or <code>climate.termostato</code>) that defines if the heating system is ON or OFF. Starting or stopping the heating system in the UI updates this helper in Home Assistant, and changes from Home Assistant automatically trigger <code>start_heating</code>.
+            </p>
+            @if (heatingHelperEntity()) {
+              <div class="schedule-sync-pill">
+                <span class="pill-dot"></span>
+                <span>Active Helper: <code>{{ heatingHelperEntity() }}</code></span>
+              </div>
+            }
+          </div>
+
+          <div class="setting-control-group">
+            <select
+              id="heatingHelperEntitySelect"
+              class="form-control"
+              [ngModel]="heatingHelperEntity()"
+              (ngModelChange)="heatingHelperEntity.set($event)"
+              style="width: 100%;"
+            >
+              <option value="">-- No Helper Entity Configured --</option>
+              @if (heatingHelperEntity() && !isEntityInHassList(heatingHelperEntity())) {
+                <option [value]="heatingHelperEntity()">
+                  {{ heatingHelperEntity() }} (Configured)
+                </option>
+              }
+              @for (ent of hassEntities(); track ent.entity_id) {
+                <option [value]="ent.entity_id">
+                  {{ ent.friendly_name }} ({{ ent.entity_id }})
+                </option>
+              }
+            </select>
+          </div>
+        </div>
+
+        <!-- Heaters Actuator Entities List Row -->
+        <div class="heating-setting-row align-start">
+          <div class="setting-info">
+            <div class="setting-title-with-badge" style="display: flex; align-items: center; gap: 8px;">
+              <span class="setting-title">Heaters / Actuators (Fired by Heating Maps)</span>
+              <span class="badge badge-accent">{{ heatingHeaters().length }} Configured</span>
+            </div>
+            <p class="setting-desc">
+              Home Assistant entities (boilers, radiators, switches, climate valves) that are turned ON when heating map temperature conditions require heat, and turned OFF when all temperatures are satisfied.
+            </p>
+
+            <!-- Selected heater chips -->
+            <div class="heater-chips-list" style="margin-top: 12px;">
+              @for (h of heatingHeaters(); track h) {
+                <span class="heater-chip">
+                  <span class="chip-heater-icon">🔥</span>
+                  <span class="chip-label">{{ h }}</span>
+                  <button
+                    type="button"
+                    class="chip-remove-btn"
+                    (click)="removeHeater(h)"
+                    title="Remove heater"
+                  >
+                    &times;
+                  </button>
+                </span>
+              } @empty {
+                <div class="heater-empty-hint">
+                  No heater entities configured. Add at least one heater entity below to be fired when heat is required.
+                </div>
+              }
+            </div>
+          </div>
+
+          <div class="setting-control-group">
+            <div class="heater-add-row" style="display: flex; gap: 8px; width: 100%;">
+              <select
+                class="form-control"
+                [(ngModel)]="newHeaterEntityId"
+                style="flex: 1;"
+              >
+                <option value="">-- Choose a Heater / Actuator --</option>
+                @for (ent of hassEntities(); track ent.entity_id) {
+                  <option [value]="ent.entity_id" [disabled]="heatingHeaters().includes(ent.entity_id)">
+                    {{ ent.friendly_name }} ({{ ent.entity_id }})
+                  </option>
+                }
+              </select>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                (click)="addHeater(newHeaterEntityId)"
+                [disabled]="!newHeaterEntityId || heatingHeaters().includes(newHeaterEntityId.trim())"
+                title="Add heater entity"
+              >
+                + Add
+              </button>
+            </div>
+          </div>
+        </div>
+
+                <div class="heating-setting-row">
+          <div class="setting-info">
+            <span class="setting-title">Recurrent Check Interval</span>
+            <p class="setting-desc">
+              When the heating system is active, the system reviews temperature sensors against the active heating map rules every {{ heatingIntervalMinutes() }} minutes and automatically triggers heating devices.
+            </p>
+            <div class="schedule-sync-pill">
+              <span class="pill-dot"></span>
+              <span>Syncs with schedule: <code>Auto - Heating Control</code> (cron: <code>*/{{ heatingIntervalMinutes() }} * * * *</code>)</span>
+            </div>
+          </div>
+
+          <div class="setting-control-group">
+            <div class="stepper-control">
+              <button
+                type="button"
+                class="stepper-btn stepper-btn-dec"
+                (click)="adjustInterval(-1)"
+                [disabled]="heatingIntervalMinutes() <= 1"
+                title="Decrease 1 minute"
+                aria-label="Decrease interval"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
+
+              <div class="stepper-input-wrapper">
+                <input
+                  type="number"
+                  class="stepper-input"
+                  min="1"
+                  max="720"
+                  step="1"
+                  [ngModel]="heatingIntervalMinutes()"
+                  (ngModelChange)="heatingIntervalMinutes.set($event)"
+                  placeholder="15"
+                />
+                <span class="stepper-unit">min</span>
+              </div>
+
+              <button
+                type="button"
+                class="stepper-btn stepper-btn-inc"
+                (click)="adjustInterval(1)"
+                [disabled]="heatingIntervalMinutes() >= 720"
+                title="Increase 1 minute"
+                aria-label="Increase interval"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="preset-pills-row">
+              @for (preset of presetIntervals; track preset) {
+                <button
+                  type="button"
+                  class="preset-pill"
+                  [class.active]="heatingIntervalMinutes() === preset"
+                  (click)="selectPresetInterval(preset)"
+                >
+                  {{ preset }}m
+                </button>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 2: Alarm System Configuration -->
+    <div class="settings-card alarm-settings-card">
+      <div class="card-header">
+        <div class="card-header-main">
+          <div class="card-icon-badge-row">
+            <div class="card-icon alarm-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            </div>
+            <div>
+              <div class="card-title-group">
+                <h2 class="card-title">Alarm System</h2>
+              </div>
+              <p class="card-subtitle">
+                Configure global alarm monitoring parameters, notification message templates, and speaker announcement templates.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-header-actions">
+          <button
+            type="button"
+            class="btn btn-primary"
+            (click)="saveAlarmConfig()"
+            [disabled]="savingAlarmConfig()"
+          >
+            @if (savingAlarmConfig()) {
+              <span class="spinner-sm"></span>
+              <span>Saving...</span>
+            } @else {
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              <span>Save Alarm Settings</span>
+            }
+          </button>
+        </div>
+      </div>
+
+      <div class="card-body">
+        @if (loadingAlarmConfig()) {
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <span>Loading alarm configuration...</span>
+          </div>
+        } @else {
+          <!-- Row 1: Helper Entity -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-title">Home Assistant Master Helper Entity</span>
+              <p class="setting-desc">
+                Synchronizes alarm activation with this Home Assistant entity. Changing state in Home Assistant will automatically arm or disarm the alarm system.
+              </p>
+              @if (alarmHelperEntity) {
+                <div class="schedule-sync-pill">
+                  <span class="pill-dot"></span>
+                  <span>Active Helper: <code>{{ alarmHelperEntity }}</code></span>
+                </div>
+              }
+            </div>
+
+            <div class="setting-control-group">
+              <select
+                id="alarmHelperEntityInput"
+                class="form-control"
+                [(ngModel)]="alarmHelperEntity"
+                style="width: 100%;"
+              >
+                <option value="">-- No Helper Entity Configured --</option>
+                @if (alarmHelperEntity && !isEntityInHassList(alarmHelperEntity)) {
+                  <option [value]="alarmHelperEntity">
+                    {{ alarmHelperEntity }} (Configured)
+                  </option>
+                }
+                @for (ent of hassEntities(); track ent.entity_id) {
+                  <option [value]="ent.entity_id">
+                    {{ ent.friendly_name }} ({{ ent.entity_id }})
+                  </option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <!-- Row 2: Notification Message Template -->
+          <div class="setting-item-row align-start">
+            <div class="setting-info">
+              <span class="setting-title">Notification Alert Template</span>
+              <p class="setting-desc">
+                Message dispatched to notification channels when sensor events exceed threshold. Click tags below to insert into template:
+              </p>
+              <div class="tag-actions-inline" style="margin-top: 8px;">
+                @for (item of alarmAvailableTags; track item.tag) {
+                  <button
+                    type="button"
+                    class="btn-tag-pill"
+                    (click)="insertTagIntoAlarmNotification(item.tag)"
+                    title="{{ item.desc }} — Click to insert"
+                  >
+                    + {{ item.tag }}
+                  </button>
+                }
+              </div>
+            </div>
+
+            <div class="setting-control-group">
+              <textarea
+                class="form-control"
+                rows="2"
+                [(ngModel)]="alarmNotificationMessage"
+                placeholder="e.g. 🚨 ALARM: Excessive activity detected on {device_name} ({device_type})! {count} events occurred within {seconds}s."
+                style="width: 100%;"
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Row 3: Speaker Announcement Template -->
+          <div class="setting-item-row align-start">
+            <div class="setting-info">
+              <span class="setting-title">Speaker Announcement Template (Voice Audio)</span>
+              <p class="setting-desc">
+                Voice announcement broadcasted over Home Assistant media players when speak is enabled on rule. Click tags below to insert:
+              </p>
+              <div class="tag-actions-inline" style="margin-top: 8px;">
+                @for (item of alarmAvailableTags; track item.tag) {
+                  <button
+                    type="button"
+                    class="btn-tag-pill"
+                    (click)="insertTagIntoAlarmSpeak(item.tag)"
+                    title="{{ item.desc }} — Click to insert"
+                  >
+                    + {{ item.tag }}
+                  </button>
+                }
+              </div>
+            </div>
+
+            <div class="setting-control-group">
+              <textarea
+                class="form-control"
+                rows="2"
+                [(ngModel)]="alarmSpeakMessage"
+                placeholder="e.g. Atención. Alarma de seguridad activada en {device_name}. Se han detectado {count} eventos."
+                style="width: 100%;"
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Row 4: Trigger Count Threshold -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-title">Default Trigger Count Threshold</span>
+              <p class="setting-desc">
+                Number of sensor events within rolling time window required to trigger alarm.
+              </p>
+            </div>
+
+            <div class="setting-control-group">
+              <div class="stepper-control">
+                <button
+                  type="button"
+                  class="stepper-btn stepper-btn-dec"
+                  (click)="adjustAlarmTrigger(-1)"
+                  [disabled]="alarmDefaultTrigger <= 1"
+                  title="Decrease 1 event"
+                  aria-label="Decrease trigger count"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+
+                <div class="stepper-input-wrapper">
+                  <input
+                    type="number"
+                    class="stepper-input stepper-input-wide"
+                    min="1"
+                    max="99"
+                    step="1"
+                    [(ngModel)]="alarmDefaultTrigger"
+                    placeholder="2"
+                  />
+                  <span class="stepper-unit">events</span>
+                </div>
+
+                <button
+                  type="button"
+                  class="stepper-btn stepper-btn-inc"
+                  (click)="adjustAlarmTrigger(1)"
+                  [disabled]="alarmDefaultTrigger >= 99"
+                  title="Increase 1 event"
+                  aria-label="Increase trigger count"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div class="preset-pills-row">
+                @for (preset of [1, 2, 3, 5]; track preset) {
+                  <button
+                    type="button"
+                    class="preset-pill"
+                    [class.active]="alarmDefaultTrigger === preset"
+                    (click)="alarmDefaultTrigger = preset"
+                  >
+                    {{ preset }}
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 5: Default Evaluation Window -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-title">Default Evaluation Window</span>
+              <p class="setting-desc">
+                Rolling memory window in seconds for counting consecutive sensor events.
+              </p>
+            </div>
+
+            <div class="setting-control-group">
+              <div class="stepper-control">
+                <button
+                  type="button"
+                  class="stepper-btn stepper-btn-dec"
+                  (click)="adjustAlarmSeconds(-5)"
+                  [disabled]="alarmDefaultSeconds <= 5"
+                  title="Decrease 5 seconds"
+                  aria-label="Decrease seconds"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+
+                <div class="stepper-input-wrapper">
+                  <input
+                    type="number"
+                    class="stepper-input"
+                    min="5"
+                    max="3600"
+                    step="5"
+                    [(ngModel)]="alarmDefaultSeconds"
+                    placeholder="60"
+                  />
+                  <span class="stepper-unit">sec</span>
+                </div>
+
+                <button
+                  type="button"
+                  class="stepper-btn stepper-btn-inc"
+                  (click)="adjustAlarmSeconds(5)"
+                  [disabled]="alarmDefaultSeconds >= 3600"
+                  title="Increase 5 seconds"
+                  aria-label="Increase seconds"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div class="preset-pills-row">
+                @for (preset of [30, 60, 120, 300]; track preset) {
+                  <button
+                    type="button"
+                    class="preset-pill"
+                    [class.active]="alarmDefaultSeconds === preset"
+                    (click)="alarmDefaultSeconds = preset"
+                  >
+                    {{ preset }}s
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 6: Events Retention Window -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-title">Events Retention Window (Memory Purge)</span>
+              <p class="setting-desc">
+                Automatically purges recorded sensor events older than this age to prevent uncontrolled memory growth.
+              </p>
+            </div>
+
+            <div class="setting-control-group">
+              <div class="stepper-control">
+                <button
+                  type="button"
+                  class="stepper-btn stepper-btn-dec"
+                  (click)="adjustAlarmRetention(-30)"
+                  [disabled]="alarmRetentionSeconds <= 10"
+                  title="Decrease 30 seconds"
+                  aria-label="Decrease retention"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+
+                <div class="stepper-input-wrapper">
+                  <input
+                    type="number"
+                    class="stepper-input"
+                    min="10"
+                    max="86400"
+                    step="30"
+                    [(ngModel)]="alarmRetentionSeconds"
+                    placeholder="300"
+                  />
+                  <span class="stepper-unit">sec</span>
+                </div>
+
+                <button
+                  type="button"
+                  class="stepper-btn stepper-btn-inc"
+                  (click)="adjustAlarmRetention(30)"
+                  [disabled]="alarmRetentionSeconds >= 86400"
+                  title="Increase 30 seconds"
+                  aria-label="Increase retention"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div class="preset-pills-row">
+                @for (preset of [120, 300, 600, 1800]; track preset) {
+                  <button
+                    type="button"
+                    class="preset-pill"
+                    [class.active]="alarmRetentionSeconds === preset"
+                    (click)="alarmRetentionSeconds = preset"
+                  >
+                    {{ preset >= 60 ? (preset / 60) + 'm' : preset + 's' }}
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 7: Trigger-to-Fire Delay -->
+          <div class="setting-item-row">
+            <div class="setting-info">
+              <span class="setting-title">Alarm Trigger Delay (Seconds)</span>
+              <p class="setting-desc">
+                Global delay between trigger condition detection and firing the alarm (notification / speech). Allows time to disarm the alarm.
+              </p>
+            </div>
+
+            <div class="setting-control-group">
+              <div class="stepper-control">
+                <button
+                  type="button"
+                  class="stepper-btn stepper-btn-dec"
+                  (click)="adjustAlarmDelay(-5)"
+                  [disabled]="alarmDelaySeconds <= 0"
+                  title="Decrease 5 seconds"
+                  aria-label="Decrease delay"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+
+                <div class="stepper-input-wrapper">
+                  <input
+                    type="number"
+                    class="stepper-input"
+                    min="0"
+                    max="3600"
+                    step="5"
+                    [(ngModel)]="alarmDelaySeconds"
+                    placeholder="30"
+                  />
+                  <span class="stepper-unit">sec</span>
+                </div>
+
+                <button
+                  type="button"
+                  class="stepper-btn stepper-btn-inc"
+                  (click)="adjustAlarmDelay(5)"
+                  [disabled]="alarmDelaySeconds >= 3600"
+                  title="Increase 5 seconds"
+                  aria-label="Increase delay"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div class="preset-pills-row">
+                @for (preset of [0, 15, 30, 60]; track preset) {
+                  <button
+                    type="button"
+                    class="preset-pill"
+                    [class.active]="alarmDelaySeconds === preset"
+                    (click)="alarmDelaySeconds = preset"
+                  >
+                    {{ preset }}s
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- SECTION 3: Notification Channels Settings -->
+    <div class="settings-card notifications-settings-card">
+      <div class="card-header">
+        <div class="card-header-main">
+          <div class="card-icon-badge-row">
+            <div class="card-icon notif-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+            </div>
+            <div>
+              <div class="card-title-group">
+                <h2 class="card-title">Notification Channels</h2>
+                <span class="badge badge-count">
+                  1 active channel
+                </span>
+              </div>
+              <p class="card-subtitle">
+                Configure delivery channels for event triggers and schedule alerts.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-header-actions">
+          <button
+            class="btn btn-secondary"
+            (click)="testTelegramChannel()"
+            [disabled]="testingChannel() === 'telegram' || loadingChannels()"
+            title="Dispatch a test alert to Telegram"
+          >
+            @if (testingChannel() === 'telegram') {
+              <span class="spinner-sm"></span>
+              <span>Sending...</span>
+            } @else {
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+              <span>Test Notification</span>
+            }
+          </button>
+
+          <button
+            type="button"
+            class="btn btn-primary"
+            (click)="saveTelegramChannel()"
+            [disabled]="savingChannel() === 'telegram'"
+          >
+            @if (savingChannel() === 'telegram') {
+              <span class="spinner-sm"></span>
+              <span>Saving...</span>
+            } @else {
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              <span>Save Channel</span>
+            }
+          </button>
+        </div>
+      </div>
+
+      <div class="card-body">
+        @if (loadingChannels()) {
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <span>Loading notification channels...</span>
+          </div>
+        } @else {
+          <div class="channel-list">
+            <!-- Channel 1: Telegram -->
+            <div class="channel-card">
+              <div class="channel-card-header">
+                <div class="channel-info-left">
+                  <div class="channel-avatar telegram-avatar">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div class="channel-title-row">
+                      <h3 class="channel-title">Telegram</h3>
+                      @if (!getTelegramChannel()?.status?.configured) {
+                        <span class="status-pill status-warning">Not Configured</span>
+                      }
+                    </div>
+                    <p class="channel-desc">
+                      Dispatches alerts and task execution summaries to Telegram.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Channel Config Form -->
+              <div class="channel-card-body">
+                <div class="channel-fields-grid">
+                  <div class="form-group">
+                    <label class="form-label">
+                      <span>Chat ID</span>
+                      @if (getTelegramChannel()?.status?.using_env_chat) {
+                        <span class="env-tag">From .env</span>
+                      }
+                    </label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      [(ngModel)]="telegramChatId"
+                      placeholder="e.g. -1003245904342 or leave blank for .env"
+                    />
+                    <span class="form-hint">
+                      @if (getTelegramChannel()?.status?.effective_chat_id) {
+                        Active: <code>{{ getTelegramChannel()?.status?.effective_chat_id }}</code>
+                      } @else {
+                        Destination Telegram Chat or Channel ID.
+                      }
+                    </span>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">
+                      <span>Bot Token (Optional Override)</span>
+                      @if (getTelegramChannel()?.status?.using_env_token) {
+                        <span class="env-tag">From .env</span>
+                      }
+                    </label>
+                    <input
+                      type="password"
+                      class="form-control"
+                      [(ngModel)]="telegramBotToken"
+                      placeholder="Leave empty to use TELEGRAM_BOT_TOKEN from .env"
+                    />
+                    <span class="form-hint">
+                      @if (getTelegramChannel()?.status?.bot_token_masked) {
+                        Masked Token: <code>{{ getTelegramChannel()?.status?.bot_token_masked }}</code>
+                      } @else {
+                        Telegram Bot token from &#64;BotFather.
+                      }
+                    </span>
+                  </div>
+                </div>
+
+
+              </div>
+            </div>
+
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- SECTION 4: Speaker System (Chime TTS) Settings -->
+    <div class="settings-card speaker-settings-card">
+      <div class="card-header">
+        <div class="card-header-main">
+          <div class="card-icon-badge-row">
+            <div class="card-icon speaker-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+              </svg>
+            </div>
+            <div>
+              <div class="card-title-group">
+                <h2 class="card-title">Speaker System</h2>
+                <span class="badge badge-count">
+                  {{ selectedSpeakers.length }} speaker{{ selectedSpeakers.length === 1 ? '' : 's' }} configured
+                </span>
+              </div>
+              <p class="card-subtitle">
+                Configure Home Assistant media players to broadcast chime alerts and voice text-to-speech announcements.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-header-actions">
+          <button
+            class="btn btn-secondary"
+            (click)="testSpeakerBroadcast()"
+            [disabled]="broadcastingSpeaker() || loadingSpeakers() || selectedSpeakers.length === 0"
+            title="Dispatch a test voice announcement to configured speakers"
+          >
+            @if (broadcastingSpeaker()) {
+              <span class="spinner-sm"></span>
+              <span>Broadcasting...</span>
+            } @else {
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              </svg>
+              <span>Test Broadcast</span>
+            }
+          </button>
+
+          <button
+            type="button"
+            class="btn btn-primary"
+            (click)="saveSpeakerConfig()"
+            [disabled]="savingSpeakers()"
+          >
+            @if (savingSpeakers()) {
+              <span class="spinner-sm"></span>
+              <span>Saving...</span>
+            } @else {
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              <span>Save Speaker System</span>
+            }
+          </button>
+        </div>
+      </div>
+
+      <div class="card-body">
+        @if (loadingSpeakers()) {
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <span>Loading speaker configuration...</span>
+          </div>
+        } @else {
+          <!-- Row 1: Target Speakers Selection -->
+          <div class="setting-item-row align-start">
+            <div class="setting-info">
+              <div class="setting-title-with-badge" style="display: flex; align-items: center; gap: 8px;">
+                <span class="setting-title">Target Speakers (Home Assistant Media Players)</span>
+                <span class="badge badge-accent">{{ selectedSpeakers.length }} Selected</span>
+              </div>
+              <p class="setting-desc">
+                Home Assistant media player entities used to broadcast chime alerts and voice text-to-speech announcements.
+              </p>
+
+              <!-- Selected speaker chips -->
+              <div class="speaker-chips-list" style="margin-top: 12px;">
+                @for (sp of selectedSpeakers; track sp) {
+                  <span class="speaker-chip">
+                    <svg class="chip-speaker-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                    </svg>
+                    <span class="chip-label">{{ sp }}</span>
+                    <button
+                      type="button"
+                      class="chip-remove-btn"
+                      (click)="removeSpeaker(sp)"
+                      title="Remove speaker"
+                    >
+                      &times;
+                    </button>
+                  </span>
+                } @empty {
+                  <div class="speaker-empty-hint">
+                    No speakers selected. Please add at least one Home Assistant media player below.
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div class="setting-control-group">
+              <div class="speaker-add-row" style="display: flex; gap: 8px; width: 100%;">
+                <select
+                  class="form-control"
+                  [(ngModel)]="newSpeakerEntityId"
+                  style="flex: 1;"
+                >
+                  <option value="">-- Choose a Media Player --</option>
+                  @for (ent of availableMediaPlayerEntities(); track ent.entity_id) {
+                    <option [value]="ent.entity_id" [disabled]="selectedSpeakers.includes(ent.entity_id)">
+                      {{ ent.friendly_name }} ({{ ent.entity_id }})
+                    </option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  (click)="addSpeaker(newSpeakerEntityId)"
+                  [disabled]="!newSpeakerEntityId || selectedSpeakers.includes(newSpeakerEntityId)"
+                  title="Add speaker"
+                >
+                  + Add
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 2: Chime Sound -->
+          <div class="setting-item-row align-start">
+            <div class="setting-info">
+              <span class="setting-title">Chime Sound (chime_path)</span>
+              <p class="setting-desc">
+                Audio chime played prior to voice speech announcements (e.g. <code>bells</code>, <code>chord</code>, <code>ding_dong</code>).
+              </p>
+            </div>
+
+            <div class="setting-control-group">
+              <input
+                type="text"
+                class="form-control"
+                [(ngModel)]="speakerChimePath"
+                placeholder="e.g. bells, chord, ding_dong"
+                style="width: 100%;"
+              />
+              <div class="preset-pills-row">
+                @for (preset of chimePresets; track preset) {
+                  <button
+                    type="button"
+                    class="preset-pill"
+                    [class.active]="speakerChimePath === preset"
+                    (click)="setChimePreset(preset)"
+                  >
+                    🔔 {{ preset }}
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 3: TTS Platform -->
+          <div class="setting-item-row align-start">
+            <div class="setting-info">
+              <span class="setting-title">TTS Platform (tts_platform)</span>
+              <p class="setting-desc">
+                Home Assistant text-to-speech engine service (e.g. <code>tts.google_translate_say</code>, <code>tts.piper</code>, <code>tts.cloud</code>).
+              </p>
+            </div>
+
+            <div class="setting-control-group">
+              <input
+                type="text"
+                class="form-control"
+                [(ngModel)]="speakerTtsPlatform"
+                placeholder="e.g. tts.google_translate_say"
+                style="width: 100%;"
+              />
+              <div class="preset-pills-row">
+                @for (preset of ttsPresets; track preset) {
+                  <button
+                    type="button"
+                    class="preset-pill"
+                    [class.active]="speakerTtsPlatform === preset"
+                    (click)="speakerTtsPlatform = preset"
+                  >
+                    {{ preset.replace('tts.', '') }}
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 4: Broadcast Volume -->
+          <div class="setting-item-row align-start">
+            <div class="setting-info">
+              <div class="setting-title-with-badge" style="display: flex; align-items: center; gap: 8px;">
+                <span class="setting-title">Broadcast Volume (volume_level)</span>
+                <span class="volume-badge">{{ (speakerVolumeLevel * 100) | number:'1.0-0' }}%</span>
+              </div>
+              <p class="setting-desc">
+                Playback volume level from 0% (muted) to 100% (maximum volume) on target media players.
+              </p>
+            </div>
+
+            <div class="setting-control-group">
+              <div class="volume-slider-row" style="width: 100%; display: flex; align-items: center; gap: 12px;">
+                <span class="volume-min-label">0%</span>
+                <input
+                  type="range"
+                  class="volume-slider"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  [(ngModel)]="speakerVolumeLevel"
+                  style="flex: 1;"
+                />
+                <span class="volume-max-label">100%</span>
+              </div>
+              <div class="preset-pills-row">
+                @for (pct of [25, 50, 75, 100]; track pct) {
+                  <button
+                    type="button"
+                    class="preset-pill"
+                    [class.active]="Math.round(speakerVolumeLevel * 100) === pct"
+                    (click)="speakerVolumeLevel = pct / 100"
+                  >
+                    {{ pct }}%
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 5: Default Announcement Message -->
+          <div class="setting-item-row align-start">
+            <div class="setting-info">
+              <span class="setting-title">Default Announcement Message</span>
+              <p class="setting-desc">
+                Fallback voice message broadcast through speakers when none is specified in event triggers or schedule routines.
+              </p>
+            </div>
+
+            <div class="setting-control-group">
+              <textarea
+                class="form-control speaker-textarea"
+                rows="2"
+                [(ngModel)]="speakerDefaultMessage"
+                placeholder="Enter standard message to announce through speakers..."
+                style="width: 100%;"
+              ></textarea>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- SECTION 5: Use Cases (Compacted in one self-contained card) -->
     <div class="settings-card use-cases-card">
       <div class="card-header">
         <div class="card-header-main">
           <div class="card-icon-badge-row">
-            <div class="card-icon">
+            <div class="card-icon use-cases-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
               </svg>
@@ -257,7 +1307,7 @@
       </div>
     </div>
 
-    <!-- SECTION 2: Devices Configuration (Home Assistant Integration) -->
+    <!-- SECTION 6: Devices Configuration (Home Assistant Integration) -->
     <div class="settings-card devices-card">
       <div class="card-header">
         <div class="card-header-main">
@@ -424,118 +1474,6 @@
         }
       </div>
     </div>
-
-    <!-- SECTION 3: Heating System Settings -->
-    <div class="settings-card heating-settings-card">
-      <div class="card-header">
-        <div class="card-header-main">
-          <div class="card-icon-badge-row">
-            <div class="card-icon heating-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2c0 4.5-5 7-5 12a5 5 0 0 0 10 0c0-5-5-7.5-5-12z" />
-              </svg>
-            </div>
-            <div>
-              <div class="card-title-group">
-                <h2 class="card-title">Heating Settings</h2>
-                <span class="badge badge-count">{{ heatingIntervalMinutes() }} min interval</span>
-              </div>
-              <p class="card-subtitle">
-                Configure recurrent evaluation schedule and heating regulation interval.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div class="card-header-actions">
-          <button
-            class="btn btn-primary"
-            [disabled]="isSavingSettings() || heatingIntervalMinutes() < 1"
-            (click)="saveHeatingSettings()"
-          >
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-              <polyline points="17 21 17 13 7 13 7 21" />
-              <polyline points="7 3 7 8 15 8" />
-            </svg>
-            {{ isSavingSettings() ? 'Saving...' : 'Save Settings' }}
-          </button>
-        </div>
-      </div>
-
-      <div class="card-body">
-        <div class="heating-setting-row">
-          <div class="setting-info">
-            <span class="setting-title">Recurrent Check Interval</span>
-            <p class="setting-desc">
-              When the heating system is active, the system reviews temperature sensors against the active heating map rules every {{ heatingIntervalMinutes() }} minutes and automatically triggers heating devices.
-            </p>
-            <div class="schedule-sync-pill">
-              <span class="pill-dot"></span>
-              <span>Syncs with schedule: <code>Auto - Heating Control</code> (cron: <code>*/{{ heatingIntervalMinutes() }} * * * *</code>)</span>
-            </div>
-          </div>
-
-          <div class="setting-control-group">
-            <div class="stepper-control">
-              <button
-                type="button"
-                class="stepper-btn stepper-btn-dec"
-                (click)="adjustInterval(-1)"
-                [disabled]="heatingIntervalMinutes() <= 1"
-                title="Decrease 1 minute"
-                aria-label="Decrease interval"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              </button>
-
-              <div class="stepper-input-wrapper">
-                <input
-                  type="number"
-                  class="stepper-input"
-                  min="1"
-                  max="720"
-                  step="1"
-                  [ngModel]="heatingIntervalMinutes()"
-                  (ngModelChange)="heatingIntervalMinutes.set($event)"
-                  placeholder="15"
-                />
-                <span class="stepper-unit">min</span>
-              </div>
-
-              <button
-                type="button"
-                class="stepper-btn stepper-btn-inc"
-                (click)="adjustInterval(1)"
-                [disabled]="heatingIntervalMinutes() >= 720"
-                title="Increase 1 minute"
-                aria-label="Increase interval"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              </button>
-            </div>
-
-            <div class="preset-pills-row">
-              @for (preset of presetIntervals; track preset) {
-                <button
-                  type="button"
-                  class="preset-pill"
-                  [class.active]="heatingIntervalMinutes() === preset"
-                  (click)="selectPresetInterval(preset)"
-                >
-                  {{ preset }}m
-                </button>
-              }
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- Use Case Create / Edit Modal -->
@@ -581,10 +1519,10 @@
               <option value="blinds">🪟 Blinds</option>
               <option value="rain">🌧️ Rain</option>
               <option value="notification">🔔 Notification</option>
-              <option value="heating_control">🔥 Heating Control</option>
-              <option value="heating_recurrent">🔥 Heating Recurrent</option>
+              <option value="heating">🔥 Heating</option>
+              <option value="alarm">🚨 Alarm</option>
             </select>
-            <span class="form-hint">Assign this use case to a specific feature section (e.g. Irrigation, Blinds, Rain, Notification, Heating Control, or Heating Recurrent)</span>
+            <span class="form-hint">Assign this use case to a specific feature section (e.g. Irrigation, Blinds, Rain, Notification, Heating, or Alarm)</span>
           </div>
 
           <div class="form-group">

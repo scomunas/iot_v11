@@ -10,6 +10,7 @@ import {
 } from '../../services/settings.service';
 import { Schedule, SchedulesService } from '../../services/schedules.service';
 import { EventDefinition, EventsService } from '../../services/events.service';
+import { AlarmMemoryEvent, AlarmRuleData, AlarmService } from '../../services/alarm.service';
 
 export const BLINDS_SCHEDULE_NAME = 'Auto - Blinds';
 export const IRRIGATION_SCHEDULE_NAME = 'Auto - Irrigation';
@@ -26,6 +27,7 @@ export class DashboardComponent implements OnInit {
   private readonly settingsService = inject(SettingsService);
   private readonly schedulesService = inject(SchedulesService);
   private readonly eventsService = inject(EventsService);
+  private readonly alarmService = inject(AlarmService);
 
   // General State
   readonly loading = signal<boolean>(false);
@@ -39,6 +41,13 @@ export class DashboardComponent implements OnInit {
   readonly heatingMapsCount = signal<number>(0);
   readonly calendarSlotsCount = signal<number>(0);
   readonly temperatureDevices = signal<DeviceItem[]>([]);
+
+  // Alarm Section State
+  readonly alarmEnabled = signal<boolean>(false);
+  readonly togglingAlarm = signal<boolean>(false);
+  readonly alarmRules = signal<EventDefinition[]>([]);
+  readonly alarmEvents = signal<AlarmMemoryEvent[]>([]);
+  readonly alarmRulesCount = signal<number>(0);
 
   // Devices & HA State
   readonly devices = signal<DeviceItem[]>([]);
@@ -81,6 +90,19 @@ export class DashboardComponent implements OnInit {
     return this.eventDefinitions().filter(
       (e) => e.use_case === 'irrigation' || e.use_case === 'start_irrigation' || e.name.toLowerCase().includes('irrigat')
     ).length;
+  });
+
+  readonly scheduledAlarmsToFire = computed(() => {
+    return this.schedules().filter((s) => {
+      if (s.is_active !== 1 || s.type !== 'one-time') return false;
+      const useCase = (s.use_case || '').toLowerCase();
+      const name = (s.name || '').toLowerCase();
+      return useCase === 'fire_alarm' || name.includes('fire alarm');
+    });
+  });
+
+  readonly recentAlarmEvents = computed(() => {
+    return [...this.alarmEvents()].reverse().slice(0, 4);
   });
 
   ngOnInit(): void {
@@ -174,6 +196,38 @@ export class DashboardComponent implements OnInit {
       },
       error: (err) => {
         console.error('Failed to load events:', err);
+      }
+    });
+
+    // 8. Load Alarm Configuration
+    this.alarmService.getAlarmConfig().subscribe({
+      next: (resp) => {
+        this.alarmEnabled.set(resp.config?.enabled ?? false);
+      },
+      error: (err) => {
+        console.error('Failed to load alarm config:', err);
+      }
+    });
+
+    // 9. Load Alarm Memory History
+    this.alarmService.getAlarmHistory().subscribe({
+      next: (resp) => {
+        this.alarmEvents.set(resp.events || []);
+      },
+      error: (err) => {
+        console.error('Failed to load alarm history:', err);
+      }
+    });
+
+    // 10. Load Alarm Rules
+    this.alarmService.getAlarmRules().subscribe({
+      next: (resp) => {
+        const rules = resp.rules || [];
+        this.alarmRules.set(rules);
+        this.alarmRulesCount.set(rules.filter((r) => r.is_active === 1).length);
+      },
+      error: (err) => {
+        console.error('Failed to load alarm rules:', err);
       }
     });
   }
@@ -346,5 +400,75 @@ export class DashboardComponent implements OnInit {
         setTimeout(() => this.errorMessage.set(null), 5000);
       }
     });
+  }
+
+  // ==========================================
+  // Alarm Card Actions & Helpers
+  // ==========================================
+  toggleAlarmMaster(event: Event): void {
+    const inputEl = event.target as HTMLInputElement;
+    const targetEnabled = inputEl.checked;
+    this.togglingAlarm.set(true);
+
+    this.alarmService.updateAlarmConfig({ enabled: targetEnabled }).subscribe({
+      next: (resp) => {
+        this.togglingAlarm.set(false);
+        const enabled = resp.config?.enabled ?? targetEnabled;
+        this.alarmEnabled.set(enabled);
+        this.successMessage.set(`Alarm system ${enabled ? 'armed / activated' : 'disarmed / deactivated'}`);
+        if (!enabled) {
+          this.schedulesService.getSchedules().subscribe({
+            next: (sResp) => this.schedules.set(sResp.schedules || []),
+            error: () => {},
+          });
+        }
+        setTimeout(() => this.successMessage.set(null), 3500);
+      },
+      error: (err) => {
+        this.togglingAlarm.set(false);
+        inputEl.checked = this.alarmEnabled();
+        this.errorMessage.set(err.error?.detail || err.message || 'Failed to toggle alarm state');
+        setTimeout(() => this.errorMessage.set(null), 5000);
+      }
+    });
+  }
+
+  getRuleData(rule: EventDefinition): AlarmRuleData {
+    return this.alarmService.parseRuleData(rule.data);
+  }
+
+  getRuleEventCount(entity: string): number {
+    if (!entity) return 0;
+    return this.alarmEvents().filter((ev) => ev.entity === entity).length;
+  }
+
+  getAlarmDeviceName(entityId: string): string {
+    if (!entityId) return 'Unknown Sensor';
+    const dev = this.devices().find((d) => d.entity_id === entityId);
+    if (dev) return dev.name;
+    const hass = this.hassEntities().find((h) => h.entity_id === entityId);
+    if (hass) return hass.friendly_name || hass.entity_id;
+    return entityId;
+  }
+
+  getAlarmDeviceType(entityId: string): string {
+    if (!entityId) return 'movement';
+    const dev = this.devices().find((d) => d.entity_id === entityId);
+    if (dev) return dev.type;
+    return 'movement';
+  }
+
+  getAlarmDeviceTypeIcon(type: string): string {
+    switch (type?.toLowerCase()) {
+      case 'door': return '🚪';
+      case 'movement': return '🚶';
+      case 'presence': return '👤';
+      case 'temperature': return '🌡️';
+      case 'rain': return '🌧️';
+      case 'blinds': return '🪟';
+      case 'irrigation': return '💧';
+      case 'light': return '💡';
+      default: return '📍';
+    }
   }
 }

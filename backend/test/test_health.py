@@ -42,6 +42,7 @@ def test_database_initialization_and_health():
         assert data["database"] == "connected"
         assert data["scheduler"] == "running"
         assert "homeassistant" in data
+        assert "telegram" in data
         assert "timestamp" in data
         assert "environment" in data
         # Check versioned /api/v1/ping and /api/v1/health endpoints

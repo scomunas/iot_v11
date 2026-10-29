@@ -1,9 +1,19 @@
+import os
+import shutil
 import sys
 from pathlib import Path
 
 # Add backend directory to sys.path
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
+
+# Isolate test database so test execution NEVER mutates live db/iot.db
+TEST_DB_PATH = BACKEND_DIR / "db" / "test_devices.db"
+LIVE_DB_PATH = BACKEND_DIR / "db" / "iot.db"
+if "DATABASE_PATH" not in os.environ:
+    if LIVE_DB_PATH.exists():
+        shutil.copy2(LIVE_DB_PATH, TEST_DB_PATH)
+    os.environ["DATABASE_PATH"] = str(TEST_DB_PATH)
 
 from fastapi.testclient import TestClient
 from app.main import app, API_KEY
@@ -31,8 +41,8 @@ def test_homeassistant_and_devices_flow():
         initial_devices = dev_resp.json()["devices"]
         print(f"PASS: Retrieved devices, count={len(initial_devices)}")
 
-        # 3. Test POST /devices for each valid device type
-        types = ["light", "irrigation", "blinds", "temperature", "movement", "presence", "rain", "heating"]
+        # 3. Test POST /devices for each valid device type (heating removed!)
+        types = ["light", "irrigation", "blinds", "temperature", "movement", "presence", "rain", "door"]
         created_ids = []
 
         for d_type in types:
@@ -50,15 +60,24 @@ def test_homeassistant_and_devices_flow():
             created_ids.append(dev_data["id"])
             print(f"PASS: Created device #{dev_data['id']} of type '{d_type}'")
 
-        # 4. Test invalid device type rejection
+        # 4. Test invalid device type rejection (including 'heating')
         bad_payload = {
             "name": "Invalid Device",
             "type": "invalid_type_abc",
             "entity_id": "sensor.invalid",
         }
         bad_resp = client.post("/devices", json=bad_payload, headers=headers)
-        assert bad_resp.status_code == 422 or bad_resp.status_code == 400
+        assert bad_resp.status_code in (422, 400)
         print("PASS: Rejected invalid device type properly")
+
+        heating_dev_payload = {
+            "name": "Heating Device",
+            "type": "heating",
+            "entity_id": "climate.heating",
+        }
+        heating_resp = client.post("/devices", json=heating_dev_payload, headers=headers)
+        assert heating_resp.status_code in (422, 400)
+        print("PASS: Rejected 'heating' device type properly (heating is now global configuration)")
 
         # 5. Test PUT /devices/{device_id}
         update_id = created_ids[0]
@@ -98,22 +117,27 @@ def test_homeassistant_and_devices_flow():
         assert action_pos_resp.json()["position"] == 65
         print(f"PASS: Set blind position for device #{blind_id} to 65% manually")
 
-        # 6. Test DELETE /devices/{device_id} for all created
-        for dev_id in created_ids:
-            del_resp = client.delete(f"/devices/{dev_id}", headers=headers)
+        # 6. Clean up: Delete created test devices
+        for d_id in created_ids:
+            del_resp = client.delete(f"/devices/{d_id}", headers=headers)
             assert del_resp.status_code == 200
-            print(f"PASS: Deleted device #{dev_id}")
+            print(f"PASS: Cleaned up test device #{d_id}")
 
-        # 7. Verify deletion
-        verify_resp = client.get("/devices", headers=headers)
-        assert verify_resp.status_code == 200
-        current_ids = [d["id"] for d in verify_resp.json()["devices"]]
-        for dev_id in created_ids:
-            assert dev_id not in current_ids
-        print("PASS: Verified all test devices were removed")
-
-        print("All Home Assistant and devices backend tests passed successfully!")
+        # 7. Final GET /devices verification
+        final_resp = client.get("/devices", headers=headers)
+        assert final_resp.status_code == 200
+        assert len(final_resp.json()["devices"]) == len(initial_devices)
+        print(f"PASS: All test devices cleaned up, count returned to {len(initial_devices)}")
 
 
 if __name__ == "__main__":
-    test_homeassistant_and_devices_flow()
+    try:
+        test_homeassistant_and_devices_flow()
+    finally:
+        for ext in ("", "-wal", "-shm"):
+            p = Path(str(TEST_DB_PATH) + ext)
+            if p.exists():
+                try:
+                    p.unlink()
+                except Exception:
+                    pass

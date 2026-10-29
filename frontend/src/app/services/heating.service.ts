@@ -7,13 +7,27 @@ import { Schedule } from './schedules.service';
 
 export interface HeatingStatusResponse {
   state: 'on' | 'off';
+  helper_entity?: string;
+  helper_state?: string;
   deactivated_until?: string | null;
   updated_at?: string;
   active_map_id?: number | null;
   active_map?: HeatingMap | null;
-  devices: DeviceItem[];
+  devices?: DeviceItem[];
   temperature_devices?: DeviceItem[];
   pending_resume_schedules?: Schedule[];
+}
+
+export interface HeatingSettingsResponse {
+  heating_helper_entity: string;
+  heating_interval_minutes: number;
+  heating_heater_entities?: string[];
+}
+
+export interface HeatingSettingsPayload {
+  heating_helper_entity?: string;
+  heating_interval_minutes?: number;
+  heating_heater_entities?: string[];
 }
 
 export interface HeatingMap {
@@ -110,6 +124,18 @@ export class HeatingService {
 
   getHeatingState(): Observable<HeatingStatusResponse> {
     return this.http.get<HeatingStatusResponse>(`${environment.backendUrl}/heating/state`, {
+      headers: this.headers,
+    });
+  }
+
+  getHeatingSettings(): Observable<HeatingSettingsResponse> {
+    return this.http.get<HeatingSettingsResponse>(`${environment.backendUrl}/heating/settings`, {
+      headers: this.headers,
+    });
+  }
+
+  updateHeatingSettings(payload: HeatingSettingsPayload): Observable<{ status: string; message: string; settings: HeatingSettingsResponse }> {
+    return this.http.put<{ status: string; message: string; settings: HeatingSettingsResponse }>(`${environment.backendUrl}/heating/settings`, payload, {
       headers: this.headers,
     });
   }
