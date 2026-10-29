@@ -501,8 +501,34 @@ def init_db() -> None:
                 (existing_h[0],),
             )
 
-        # Clean up unused heating use cases and remove default start_heating use case
-        conn.execute("DELETE FROM use_cases WHERE name IN ('Heating Recurrent', 'set_heating_map', 'start_heating') OR function_name = 'start_heating'")
+        # Seed 'Start Heating' use case (executing start_heating under heating section).
+        # It is in charge of switching the heating system on or off and is used by the deferred
+        # one-time schedule created when the user switches heating off until a given time.
+        cursor.execute("SELECT id FROM use_cases WHERE function_name = 'start_heating'")
+        existing_sh = cursor.fetchone()
+        if not existing_sh:
+            now_utc = datetime.now(timezone.utc).isoformat()
+            cursor.execute(
+                """
+                INSERT INTO use_cases (name, function_name, description, section, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    "Start Heating",
+                    "start_heating",
+                    "Switches the heating system on or off (data parameter 'action': 'on' | 'off')",
+                    "heating",
+                    now_utc,
+                ),
+            )
+        else:
+            conn.execute(
+                "UPDATE use_cases SET section = 'heating' WHERE id = ?",
+                (existing_sh[0],),
+            )
+
+        # Clean up unused heating use cases
+        conn.execute("DELETE FROM use_cases WHERE name IN ('Heating Recurrent', 'set_heating_map')")
         conn.execute("UPDATE use_cases SET section = 'heating' WHERE section IN ('heating_control', 'heating_recurrent')")
         conn.execute("UPDATE use_cases SET name = 'Heating' WHERE name = 'Heating Control'")
 

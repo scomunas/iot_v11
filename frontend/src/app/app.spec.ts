@@ -29,11 +29,11 @@ describe('App', () => {
     expect(compiled.querySelector('.app-title')?.textContent).toContain('IoT');
   });
 
-  it('should display version v11.1.0', async () => {
+  it('should display version v11.1.1', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('.version-value')?.textContent).toContain('v11.1.0');
+    expect(compiled.querySelector('.version-value')?.textContent).toContain('v11.1.1');
   });
 
   it('should display Backend, Scheduler, Database, and Home Assistant status items in the sidebar bottom', async () => {

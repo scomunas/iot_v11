@@ -16,7 +16,7 @@ Modern Angular application for the **IoT** home automation management system.
   - **Middle**: Navigation sections (**Dashboard**, **Schedules**).
   - **Bottom**:
     - **System Status**: Clean indicators for **Backend**, **Scheduler**, and **Database** querying `/health` (`http://localhost:8000/health`) using the secure `X-API-Key`. Includes auto-refresh and manual refresh.
-    - **App Version**: `v11.1.0`
+    - **App Version**: `v11.1.1`
 - **Dashboard Overview**:
   - Service status, SQLite database connection status, and scheduler engine status.
   - Home Assistant integration readiness card.
@@ -45,7 +45,7 @@ export const environment = {
   production: false,
   backendUrl: 'http://localhost:8000',
   apiKey: 'iot-secret-key-change-me-in-production',
-  version: 'v11.1.0',
+  version: 'v11.1.1',
 };
 ```
 

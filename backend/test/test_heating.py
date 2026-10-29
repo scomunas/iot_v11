@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import sys
@@ -194,6 +195,8 @@ def test_heating_full_flow(mock_ha_call, mock_sched_call, mock_ha_state):
             matching_uc = next((u for u in all_ucs if u["name"] == sched["use_case"]), None)
             assert matching_uc is not None
             assert matching_uc["section"] == "heating"
+            assert matching_uc["function_name"] == "start_heating"
+            assert json.loads(sched["data"]) == {"action": "on"}
             print("PASS: POST /heating/state for 3 hours created one-time schedule #", sched["id"], "with heating use case:", matching_uc["name"])
 
             # 6. Verify pending resume schedules in GET /heating/state

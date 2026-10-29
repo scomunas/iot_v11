@@ -1556,19 +1556,16 @@ async def update_heating_state(payload: HeatingStateRequest, _: str = Security(v
         if target_dt is not None:
             deactivated_until_iso = target_dt.isoformat()
 
-            # Find or use use case executing control_heating / heating section for deferred activation
+            # Deferred activation must run the 'start_heating' executable function (heating section)
             all_ucs = db_list_use_cases()
             heating_uc = next(
-                (u for u in all_ucs if u.get("function_name") == "control_heating" and u.get("section") == "heating"),
-                None
-            ) or next(
-                (u for u in all_ucs if u.get("section") == "heating"),
+                (u for u in all_ucs if u.get("function_name") == "start_heating" and u.get("section") == "heating"),
                 None
             ) or next(
                 (u for u in all_ucs if u.get("function_name") == "start_heating"),
                 None
             )
-            uc_name = heating_uc["name"] if heating_uc else "Heating"
+            uc_name = heating_uc["name"] if heating_uc else "Start Heating"
 
             sched_name = f"Auto - Heating Activate ({target_dt.strftime('%Y-%m-%d %H:%M')})"
             created_schedule = create_and_register_schedule(
