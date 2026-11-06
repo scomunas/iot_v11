@@ -121,7 +121,151 @@
   <!-- SECTION 1: WEEKLY CALENDAR SCHEDULE -->
   <!-- ========================================================================= -->
   <div class="calendar-section-content">
-    <!-- Temperature Devices Grid Card -->
+    <!-- 1. Temperature & Heating History Card (last 48h) -->
+    <section class="card heating-history-card">
+      <div class="card-header">
+        <div class="card-header-main">
+          <div class="card-icon-badge-row">
+            <div class="card-icon temp-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
+            </div>
+            <div>
+              <div class="card-title-group">
+                <h3 class="card-title">Temperature & Heating History</h3>
+                <span class="badge badge-count">last 48h</span>
+              </div>
+              <p class="card-subtitle">
+                Temperature per sensor (lines) and heater actuators switched on (stacked bars)
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="history-body">
+        @let chart = historyChart();
+        @if (!chart || (!chart.hasTemperature && !chart.hasActuators)) {
+          <div class="history-empty">
+            No history stored yet. Samples are saved every time the <code>control_heating</code> function runs.
+          </div>
+        } @else {
+          <svg
+            class="history-chart"
+            [attr.viewBox]="'0 0 ' + chart.width + ' ' + chart.height"
+            preserveAspectRatio="xMidYMid meet"
+            role="img"
+            aria-label="Temperature and heater history for the last 48 hours"
+          >
+            <!-- Grid & left axis (temperature) -->
+            @for (t of chart.yTicks; track t.y) {
+              <line class="grid-line" [attr.x1]="chart.pad.left" [attr.x2]="chart.pad.left + chart.plotW" [attr.y1]="t.y" [attr.y2]="t.y" />
+              <text class="axis-label" [attr.x]="chart.pad.left - 6" [attr.y]="t.y + 3" text-anchor="end">{{ t.label }}°</text>
+            }
+            <!-- Right axis (heaters on) -->
+            @if (chart.hasActuators) {
+              @for (t of chart.rightTicks; track t.y) {
+                <text class="axis-label axis-right" [attr.x]="chart.pad.left + chart.plotW + 6" [attr.y]="t.y + 3" text-anchor="start">{{ t.label }}</text>
+              }
+            }
+            <!-- X axis -->
+            @for (t of chart.xTicks; track t.x) {
+              <line class="grid-line grid-vertical" [attr.x1]="t.x" [attr.x2]="t.x" [attr.y1]="chart.pad.top" [attr.y2]="chart.pad.top + chart.plotH" />
+              <text class="axis-label" [attr.x]="t.x" [attr.y]="chart.height - 10" text-anchor="middle">{{ t.label }}</text>
+            }
+
+            <!-- Stacked bars: heater actuators ON -->
+            @for (b of chart.bars; track $index) {
+              <rect class="actuator-bar" [attr.x]="b.x" [attr.y]="b.y" [attr.width]="b.w" [attr.height]="b.h" [attr.fill]="b.color">
+                <title>{{ b.title }}</title>
+              </rect>
+            }
+
+            <!-- Temperature lines (one per sensor) -->
+            @for (l of chart.lines; track l.entityId) {
+              <path class="temp-line" [attr.d]="l.path" [attr.stroke]="l.color" />
+              @if (l.points.length <= 40) {
+                @for (p of l.points; track $index) {
+                  <circle class="temp-point" [attr.cx]="p.x" [attr.cy]="p.y" r="2.5" [attr.fill]="l.color">
+                    <title>{{ p.title }}</title>
+                  </circle>
+                }
+              }
+            }
+          </svg>
+
+          <!-- Legend: sensors -->
+          <div class="history-legend">
+            @for (l of chart.lines; track l.entityId) {
+              <span class="legend-item">
+                <span class="legend-swatch legend-line" [style.background]="l.color"></span>
+                {{ l.name }}
+              </span>
+            }
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- 2. Heater Actuators Card (current state) -->
+    <section class="card heater-actuators-card">
+      <div class="card-header">
+        <div class="card-header-main">
+          <div class="card-icon-badge-row">
+            <div class="card-icon temp-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3z" />
+              </svg>
+            </div>
+            <div>
+              <div class="card-title-group">
+                <h3 class="card-title">Heater Actuators</h3>
+                <span class="badge badge-count">{{ heaterActuators().length }} configured</span>
+              </div>
+              <p class="card-subtitle">
+                Current operational state of configured heating actuators
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="actuators-card-body">
+        @if (heaterActuators().length === 0) {
+          <div class="empty-actuators-hint">
+            <div class="empty-mini-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+            <div>
+              <p class="empty-hint-text">No heater actuators configured yet.</p>
+              <p class="empty-subtext">Configure heater entities (climates or switches) in Heating Settings.</p>
+            </div>
+            <button type="button" class="btn btn-sm btn-secondary" (click)="openHeatingSettingsModal()">
+              Settings &rarr;
+            </button>
+          </div>
+        } @else {
+          <div class="actuators-grid">
+            @for (a of heaterActuators(); track a.entity_id) {
+              <div class="actuator-tile" [class.is-on]="a.state === 'on'" [title]="a.entity_id">
+                <span class="actuator-swatch" [style.background]="getActuatorColor(a.entity_id)"></span>
+                <span class="actuator-name">{{ a.name }}</span>
+                <span class="actuator-state" [class.on]="a.state === 'on'" [class.unknown]="a.state === 'unknown'">
+                  {{ a.state === 'on' ? 'ON' : a.state === 'off' ? 'OFF' : 'UNKNOWN' }}
+                </span>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- 3. Temperature Devices Grid Card -->
     <section class="card temp-sensors-card">
       <div class="card-header">
         <div class="card-header-main">
@@ -141,40 +285,6 @@
               </p>
             </div>
           </div>
-        </div>
-
-        <div class="card-header-actions">
-          <div class="autorefresh-control">
-            <label class="switch-control switch-control-sm" title="Auto-refresh temperatures every 15 seconds">
-              <input
-                type="checkbox"
-                [checked]="autoRefreshEnabled()"
-                (change)="toggleAutoRefresh($event)"
-              />
-              <span class="switch-slider"></span>
-            </label>
-            <span class="autorefresh-label" [class.is-active]="autoRefreshEnabled()">
-              Auto-refresh (15s)
-            </span>
-          </div>
-          <button
-            type="button"
-            class="refresh-btn"
-            (click)="refreshTemperatures()"
-            [disabled]="isRefreshingTemps()"
-            title="Refresh temperatures now"
-          >
-            <svg
-              [class.spinning]="isRefreshingTemps()"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
-          </button>
         </div>
       </div>
 

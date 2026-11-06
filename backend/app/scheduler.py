@@ -12,6 +12,8 @@ from apscheduler.triggers.date import DateTrigger
 
 try:
     from app.database import (
+        db_add_heating_history,
+        db_purge_heating_history,
         db_create_holiday,
         db_create_schedule,
         db_deactivate_schedule,
@@ -43,6 +45,8 @@ try:
     from app.homeassistant import call_homeassistant_service
 except ImportError:
     from database import (
+        db_add_heating_history,
+        db_purge_heating_history,
         db_create_holiday,
         db_create_schedule,
         db_deactivate_schedule,
@@ -905,6 +909,23 @@ async def fn_control_heating(
     entities = ha_data.get("entities", [])
     entity_states: Dict[str, str] = {e["entity_id"]: str(e.get("state", "")) for e in entities if "entity_id" in e}
 
+    # History samples (last 48h) stored at the end of this execution
+    history_readings: List[Dict[str, Any]] = []
+    for dev in temp_devices:
+        h_entity = dev.get("entity_id", "")
+        h_raw = entity_states.get(h_entity)
+        if not h_entity or h_raw is None:
+            continue
+        try:
+            history_readings.append({
+                "kind": "temperature",
+                "entity_id": h_entity,
+                "name": dev.get("name") or h_entity,
+                "temperature": float(h_raw),
+            })
+        except (ValueError, TypeError):
+            continue
+
     # 5. Evaluate temperature sensors with configured rules
     below_threshold = []
     satisfied = []
@@ -948,6 +969,7 @@ async def fn_control_heating(
             satisfied.append(f"{dev_name}: {current_temp}°C >= {min_temp}°C")
 
     # 6. Evaluate temperature thresholds & fire heater entities
+    commanded_heater_state: Optional[str] = None  # 'on' | 'off' when control fired the heaters
     raw_heaters = db_get_setting("heating_heater_entities", "[]") or "[]"
     try:
         heater_entities = json.loads(raw_heaters) if isinstance(raw_heaters, str) else list(raw_heaters)
@@ -962,6 +984,7 @@ async def fn_control_heating(
             heater_entities = []
 
     if below_threshold:
+        commanded_heater_state = "on"
         msg = (
             f"Heating control evaluated (Map: '{map_name}'). "
             f"Heating REQUIRED by: [{', '.join(below_threshold)}]."
@@ -983,6 +1006,7 @@ async def fn_control_heating(
         if heater_entities:
             msg += f" Fired {len(heater_entities)} heater(s) ON: [{', '.join(heater_entities)}]."
     elif satisfied:
+        commanded_heater_state = "off"
         msg = (
             f"Heating control evaluated (Map: '{map_name}'). "
             f"All {len(satisfied)} temperature sensor(s) satisfied: [{', '.join(satisfied)}]."
@@ -1009,6 +1033,28 @@ async def fn_control_heating(
             f"Heating control evaluated (Map: '{map_name}'). "
             f"No active temperature rules defined for available sensors."
         )
+
+    # 7. Store history (temperature sensors + heating actuators on/off) for the last 48h
+    try:
+        for h_ent in heater_entities:
+            h_ent = str(h_ent).strip()
+            if not h_ent:
+                continue
+            if commanded_heater_state:
+                actuator_state = commanded_heater_state
+            else:
+                observed = (entity_states.get(h_ent) or "").strip().lower()
+                actuator_state = "on" if observed in ("on", "heat", "heating", "auto", "heat_cool") else "off"
+            history_readings.append({
+                "kind": "actuator",
+                "entity_id": h_ent,
+                "name": h_ent,
+                "state": actuator_state,
+            })
+        stored = db_add_heating_history(history_readings)
+        logger.info("[control_heating] Stored %s history sample(s)", stored)
+    except Exception as exc:
+        logger.warning("[control_heating] Failed to store heating history: %s", exc)
 
     logger.info("[control_heating] %s", msg)
     return msg
@@ -1852,12 +1898,32 @@ def get_memory_jobs_status() -> List[Dict[str, Any]]:
     return jobs_info
 
 
+def purge_heating_history_job() -> None:
+    """Housekeeping: keep heating history limited to the last 48h even if control_heating stops running."""
+    try:
+        deleted = db_purge_heating_history()
+        if deleted:
+            logger.info("[heating_history] Purged %s sample(s) older than 48h", deleted)
+    except Exception as exc:
+        logger.warning("[heating_history] Purge failed: %s", exc)
+
+
 def start_scheduler():
     """Start the scheduler and restore schedules from DB."""
     if not scheduler.running:
         scheduler.start()
         logger.info("APScheduler started.")
     restore_schedules_from_db()
+
+    # Purge heating history now (startup) and then every hour
+    purge_heating_history_job()
+    scheduler.add_job(
+        purge_heating_history_job,
+        trigger="interval",
+        hours=1,
+        id="heating_history_purge",
+        replace_existing=True,
+    )
 
 
 def shutdown_scheduler():

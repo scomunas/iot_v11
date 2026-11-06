@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { HeatingComponent } from './heating.component';
@@ -13,6 +13,7 @@ import { SettingsService } from '../../services/settings.service';
 import { EventsService } from '../../services/events.service';
 
 describe('HeatingComponent', () => {
+  let fixture: ComponentFixture<HeatingComponent>;
   let component: HeatingComponent;
   let mockHeatingService: any;
   let mockSchedulesService: any;
@@ -58,6 +59,29 @@ describe('HeatingComponent', () => {
 
   beforeEach(async () => {
     mockHeatingService = {
+      getHeatingHistory: vi.fn().mockImplementation(() => {
+        const now = Date.now();
+        const iso = (minsAgo: number) => new Date(now - minsAgo * 60000).toISOString();
+        return of({
+          hours: 48,
+          temperature_samples: [
+            { id: 1, recorded_at: iso(120), kind: 'temperature', entity_id: 'sensor.a', name: 'Living', temperature: 20.5, state: null },
+            { id: 2, recorded_at: iso(60), kind: 'temperature', entity_id: 'sensor.a', name: 'Living', temperature: 21.5, state: null },
+            { id: 3, recorded_at: iso(120), kind: 'temperature', entity_id: 'sensor.b', name: 'Bedroom', temperature: 18.0, state: null },
+            { id: 4, recorded_at: iso(60), kind: 'temperature', entity_id: 'sensor.b', name: 'Bedroom', temperature: 19.0, state: null },
+          ],
+          actuator_samples: [
+            { id: 5, recorded_at: iso(120), kind: 'actuator', entity_id: 'switch.boiler', name: 'switch.boiler', temperature: null, state: 'on' },
+            { id: 6, recorded_at: iso(120), kind: 'actuator', entity_id: 'climate.rad', name: 'climate.rad', temperature: null, state: 'off' },
+            { id: 7, recorded_at: iso(60), kind: 'actuator', entity_id: 'switch.boiler', name: 'switch.boiler', temperature: null, state: 'on' },
+            { id: 8, recorded_at: iso(60), kind: 'actuator', entity_id: 'climate.rad', name: 'climate.rad', temperature: null, state: 'on' },
+          ],
+          actuators: [
+            { entity_id: 'switch.boiler', name: 'Boiler', raw_state: 'on', state: 'on' },
+            { entity_id: 'climate.rad', name: 'Radiator', raw_state: 'off', state: 'off' },
+          ],
+        });
+      }),
       getHeatingState: vi.fn().mockReturnValue(of(mockHeatingStatusResponse)),
       getHeatingSettings: vi.fn().mockReturnValue(of({
         heating_helper_entity: 'input_boolean.calefaccion',
@@ -155,7 +179,7 @@ describe('HeatingComponent', () => {
       ],
     }).compileComponents();
 
-    const fixture = TestBed.createComponent(HeatingComponent);
+    fixture = TestBed.createComponent(HeatingComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
   });
@@ -170,6 +194,42 @@ describe('HeatingComponent', () => {
     expect(component.heatingMaps()[0].name).toBe('Comfort');
     expect(component.temperatureDevices().length).toBe(1);
     expect(component.calendarDays().length).toBe(8);
+  });
+
+  it('should load 48h history and build one colored line per sensor and stacked actuator bars', () => {
+    expect(mockHeatingService.getHeatingHistory).toHaveBeenCalledWith(48);
+    const chart = component.historyChart();
+    expect(chart).toBeTruthy();
+    expect(chart!.lines.length).toBe(2);
+    const colors = chart!.lines.map((l) => l.color);
+    expect(new Set(colors).size).toBe(2);
+    expect(chart!.lines.map((l) => l.name).sort()).toEqual(['Bedroom', 'Living']);
+    expect(chart!.hasActuators).toBe(true);
+    // Boiler on in 2 buckets (2h ago & 1h ago), radiator on in 1 bucket (1h ago)
+    expect(chart!.bars.length).toBe(3);
+    expect(chart!.rightTicks.length).toBe(3); // 0..2 actuators
+    const colorsUsed = new Set(chart!.bars.map((b) => b.color));
+    expect(colorsUsed.size).toBe(2);
+  });
+
+  it('should expose current heater actuator states', () => {
+    const acts = component.heaterActuators();
+    expect(acts.length).toBe(2);
+    expect(acts.find((a) => a.entity_id === 'switch.boiler')?.state).toBe('on');
+    expect(acts.find((a) => a.entity_id === 'climate.rad')?.state).toBe('off');
+    expect(component.getActuatorColor('switch.boiler')).not.toBe(component.getActuatorColor('climate.rad'));
+  });
+
+  it('should render cards in order: 1) history chart, 2) heater actuators, 3) temperature sensors, 4) weekly schedule', () => {
+    component.activeTab.set('schedules');
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const cards = el.querySelectorAll('.calendar-section-content > .card');
+    expect(cards.length).toBeGreaterThanOrEqual(4);
+    expect(cards[0].classList.contains('heating-history-card')).toBe(true);
+    expect(cards[1].classList.contains('heater-actuators-card')).toBe(true);
+    expect(cards[2].classList.contains('temp-sensors-card')).toBe(true);
+    expect(cards[3].classList.contains('weekly-schedule-card')).toBe(true);
   });
 
   it('should switch between Part 1 (Heating Maps) and Part 2 (Weekly Calendar) tabs', () => {
@@ -231,37 +291,17 @@ describe('HeatingComponent', () => {
     expect(component.isDayModalOpen()).toBe(false);
   });
 
-  it('should toggle auto-refresh on and off and refresh every 15 seconds', () => {
-    vi.useFakeTimers();
-    expect(component.autoRefreshEnabled()).toBe(false);
+  it('should reload all heating data when global refresh is called', () => {
+    mockHeatingService.getHeatingState.mockClear();
+    mockHeatingService.getHeatingHistory.mockClear();
+    mockHeatingService.getHeatingMaps.mockClear();
+    mockHeatingService.getHeatingCalendar.mockClear();
 
-    // Toggle ON
-    const eventOn = { target: { checked: true } } as unknown as Event;
-    component.toggleAutoRefresh(eventOn);
-    expect(component.autoRefreshEnabled()).toBe(true);
+    component.loadAllData();
+
     expect(mockHeatingService.getHeatingState).toHaveBeenCalled();
-
-    // Advance 15 seconds
-    mockHeatingService.getHeatingState.mockClear();
-    vi.advanceTimersByTime(15000);
-    expect(mockHeatingService.getHeatingState).toHaveBeenCalledTimes(1);
-
-    // Advance another 15 seconds
-    vi.advanceTimersByTime(15000);
-    expect(mockHeatingService.getHeatingState).toHaveBeenCalledTimes(2);
-
-    // Toggle OFF
-    const eventOff = { target: { checked: false } } as unknown as Event;
-    component.toggleAutoRefresh(eventOff);
-    expect(component.autoRefreshEnabled()).toBe(false);
-
-    // Verify it stops polling
-    mockHeatingService.getHeatingState.mockClear();
-    vi.advanceTimersByTime(15000);
-    expect(mockHeatingService.getHeatingState).not.toHaveBeenCalled();
-
-    // Clean up
-    component.ngOnDestroy();
-    vi.useRealTimers();
+    expect(mockHeatingService.getHeatingHistory).toHaveBeenCalledWith(48);
+    expect(mockHeatingService.getHeatingMaps).toHaveBeenCalled();
+    expect(mockHeatingService.getHeatingCalendar).toHaveBeenCalled();
   });
 });

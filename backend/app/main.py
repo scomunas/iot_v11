@@ -43,6 +43,8 @@ try:
         db_get_heating_map,
         db_get_heating_map_by_name,
         db_get_heating_state,
+        db_list_heating_history,
+        db_seed_heating_history,
         db_get_holiday,
         db_is_holiday,
         db_get_schedule,
@@ -111,6 +113,8 @@ except ImportError:
         db_get_heating_map,
         db_get_heating_map_by_name,
         db_get_heating_state,
+        db_list_heating_history,
+        db_seed_heating_history,
         db_get_holiday,
         db_is_holiday,
         db_get_schedule,
@@ -1481,6 +1485,72 @@ def get_heating_state(_: str = Security(verify_api_key)):
         "temperature_devices": temp_devices,
         "pending_resume_schedules": pending_resumes,
     }
+
+
+@api_v1.get("/heating/history")
+def get_heating_history(
+    hours: float = 48.0,
+    _: str = Security(verify_api_key),
+):
+    """
+    Heating history (max last 48h) stored by 'control_heating': temperature sensor readings and
+    heater actuator on/off samples, plus the current state of every configured heater actuator.
+    """
+    hours = max(0.5, min(float(hours), 48.0))
+    samples = db_list_heating_history(hours=hours)
+
+    temperature_samples = [s for s in samples if s["kind"] == "temperature"]
+    actuator_samples = [s for s in samples if s["kind"] == "actuator"]
+
+    # Current state of configured heater actuators (live from Home Assistant)
+    raw_heaters = db_get_setting("heating_heater_entities", "[]") or "[]"
+    try:
+        heaters = json.loads(raw_heaters) if isinstance(raw_heaters, str) else list(raw_heaters)
+        if not isinstance(heaters, list):
+            heaters = []
+    except Exception:
+        heaters = []
+    heaters = [str(h).strip() for h in heaters if str(h).strip()]
+
+    entity_map: Dict[str, Any] = {}
+    try:
+        ha_data = fetch_homeassistant_entities()
+        entity_map = {e["entity_id"]: e for e in ha_data.get("entities", []) if "entity_id" in e}
+    except Exception as exc:
+        logger.warning("Could not fetch HA states for heating actuators: %s", exc)
+
+    actuators = []
+    for h in heaters:
+        ent = entity_map.get(h) or {}
+        raw_state = ent.get("state")
+        norm = (str(raw_state).strip().lower() if raw_state is not None else "")
+        actuators.append({
+            "entity_id": h,
+            "name": ent.get("friendly_name") or h,
+            "raw_state": raw_state,
+            "state": "on" if norm in ("on", "heat", "heating", "auto", "heat_cool") else (
+                "off" if norm in ("off",) else "unknown"
+            ),
+        })
+
+    return {
+        "hours": hours,
+        "temperature_samples": temperature_samples,
+        "actuator_samples": actuator_samples,
+        "actuators": actuators,
+    }
+
+
+@api_v1.post("/heating/history/seed")
+def seed_heating_history_endpoint(
+    hours: float = 48.0,
+    _: str = Security(verify_api_key),
+):
+    """
+    Seed random mock heating history data for the last N hours (max 48) for previewing graphs.
+    """
+    count = db_seed_heating_history(hours=hours)
+    return {"status": "ok", "samples_seeded": count, "hours": min(float(hours), 48.0)}
 
 
 @api_v1.post("/heating/state")

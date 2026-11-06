@@ -109,6 +109,30 @@ export interface HeatingStateResponse {
   schedule?: Schedule;
 }
 
+export interface HeatingHistorySample {
+  id: number;
+  recorded_at: string;
+  kind: 'temperature' | 'actuator';
+  entity_id: string;
+  name: string | null;
+  temperature: number | null;
+  state: 'on' | 'off' | null;
+}
+
+export interface HeatingActuatorStatus {
+  entity_id: string;
+  name: string;
+  raw_state?: string | null;
+  state: 'on' | 'off' | 'unknown';
+}
+
+export interface HeatingHistoryResponse {
+  hours: number;
+  temperature_samples: HeatingHistorySample[];
+  actuator_samples: HeatingHistorySample[];
+  actuators: HeatingActuatorStatus[];
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -120,6 +144,13 @@ export class HeatingService {
       'Content-Type': 'application/json',
       'X-API-Key': environment.apiKey,
     });
+  }
+
+  getHeatingHistory(hours = 48): Observable<HeatingHistoryResponse> {
+    return this.http.get<HeatingHistoryResponse>(
+      `${environment.backendUrl}/heating/history?hours=${hours}`,
+      { headers: this.headers },
+    );
   }
 
   getHeatingState(): Observable<HeatingStatusResponse> {

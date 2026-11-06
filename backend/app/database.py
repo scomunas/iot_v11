@@ -3,7 +3,7 @@ import logging
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
@@ -224,6 +224,25 @@ def init_db() -> None:
                 created_at TEXT NOT NULL
             );
             """
+        )
+
+        # History of temperature sensor readings and heating actuator on/off states (last 48h),
+        # written by the 'control_heating' executable function on every execution.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS heating_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                recorded_at TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('temperature', 'actuator')),
+                entity_id TEXT NOT NULL,
+                name TEXT,
+                temperature REAL,
+                state TEXT
+            );
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_heating_history_recorded_at ON heating_history(recorded_at)"
         )
 
         # Migration: Ensure heating_state does not store 'state' column (heating state is derived dynamically from helper entity)
@@ -1416,6 +1435,161 @@ def db_set_active_heating_map(map_id: int) -> Dict[str, Any]:
             (map_id, now_utc),
         )
     return db_get_heating_state()
+
+
+HEATING_HISTORY_RETENTION_HOURS = 48
+
+
+def db_purge_heating_history() -> int:
+    """Delete heating history samples older than the 48h retention. Returns rows deleted."""
+    cutoff_iso = (
+        datetime.now(timezone.utc) - timedelta(hours=HEATING_HISTORY_RETENTION_HOURS)
+    ).isoformat()
+    with get_db() as conn:
+        cur = conn.execute("DELETE FROM heating_history WHERE recorded_at < ?", (cutoff_iso,))
+        return cur.rowcount
+
+
+def db_add_heating_history(
+    readings: List[Dict[str, Any]],
+    recorded_at: Optional[datetime] = None,
+) -> int:
+    """
+    Store a batch of heating history samples sharing the same timestamp and purge samples older
+    than 48 hours.
+    Each reading: {"kind": "temperature"|"actuator", "entity_id", "name", "temperature", "state"}.
+    Returns the number of rows inserted.
+    """
+    ts = recorded_at or datetime.now(timezone.utc)
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    ts = ts.astimezone(timezone.utc)
+    ts_iso = ts.isoformat()
+    cutoff_iso = (ts - timedelta(hours=HEATING_HISTORY_RETENTION_HOURS)).isoformat()
+
+    rows = [
+        (
+            ts_iso,
+            r["kind"],
+            r["entity_id"],
+            r.get("name"),
+            r.get("temperature"),
+            r.get("state"),
+        )
+        for r in readings
+    ]
+    with get_db() as conn:
+        if rows:
+            conn.executemany(
+                """
+                INSERT INTO heating_history (recorded_at, kind, entity_id, name, temperature, state)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
+        conn.execute("DELETE FROM heating_history WHERE recorded_at < ?", (cutoff_iso,))
+    return len(rows)
+
+
+def db_list_heating_history(
+    hours: float = HEATING_HISTORY_RETENTION_HOURS,
+    kind: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Return heating history samples from the last N hours (max 48), oldest first."""
+    db_purge_heating_history()
+    hours = min(float(hours), HEATING_HISTORY_RETENTION_HOURS)
+    cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    query = "SELECT * FROM heating_history WHERE recorded_at >= ?"
+    params: List[Any] = [cutoff_iso]
+    if kind:
+        query += " AND kind = ?"
+        params.append(kind)
+    query += " ORDER BY recorded_at ASC, id ASC"
+    with get_db() as conn:
+        return [dict(r) for r in conn.execute(query, params).fetchall()]
+
+
+def db_seed_heating_history(
+    hours: float = HEATING_HISTORY_RETENTION_HOURS,
+    interval_minutes: int = 15,
+) -> int:
+    """Populate database with synthetic heating history for testing / preview."""
+    import math
+    import random
+
+    devices = db_list_devices()
+    temp_devices = [d for d in devices if d.get("type") == "temperature"]
+    if not temp_devices:
+        temp_devices = [
+            {"entity_id": "sensor.temperatura_comedor_grados", "name": "Comedor"},
+            {"entity_id": "sensor.temperature_sensor_2", "name": "Terraza"},
+            {"entity_id": "sensor.temperature_sensor", "name": "Estudio Sergio"},
+            {"entity_id": "sensor.temperatura_balcon_temperatura", "name": "Balcón"},
+            {"entity_id": "sensor.temperatura_habitacion_grados", "name": "Habitación Laura"},
+        ]
+
+    sensor_profiles = {
+        "sensor.temperatura_comedor_grados": (20.8, 1.3),
+        "sensor.temperature_sensor_2": (13.5, 4.5),
+        "sensor.temperature_sensor": (21.6, 1.0),
+        "sensor.temperatura_balcon_temperatura": (15.2, 3.2),
+        "sensor.temperatura_habitacion_grados": (20.1, 1.2),
+    }
+
+    with get_db() as conn:
+        conn.execute("DELETE FROM heating_history")
+
+    now = datetime.now(timezone.utc)
+    total_steps = int((hours * 60) // interval_minutes)
+    start_time = now - timedelta(minutes=total_steps * interval_minutes)
+
+    total_inserted = 0
+    for step in range(total_steps + 1):
+        sample_time = start_time + timedelta(minutes=step * interval_minutes)
+        hour_float = sample_time.hour + sample_time.minute / 60.0
+        diurnal = math.sin((hour_float - 9.0) * 2.0 * math.pi / 24.0)
+
+        readings = []
+        for dev in temp_devices:
+            entity_id = dev.get("entity_id") or f"sensor.temp_{dev.get('id')}"
+            name = dev.get("name") or entity_id
+            base, amp = sensor_profiles.get(entity_id, (21.0, 1.2))
+            noise = random.uniform(-0.15, 0.15)
+            temp = round(base + amp * diurnal + noise, 1)
+            readings.append({
+                "kind": "temperature",
+                "entity_id": entity_id,
+                "name": name,
+                "temperature": temp,
+                "state": None,
+            })
+
+        is_morning = 6.25 <= hour_float <= 8.5
+        is_evening = 18.5 <= hour_float <= 22.5
+        is_afternoon = 13.0 <= hour_float <= 14.0
+
+        thermostat_on = is_morning or is_evening or is_afternoon
+        caldera_on = (is_morning and hour_float >= 6.5) or (is_evening and hour_float <= 22.0)
+
+        readings.append({
+            "kind": "actuator",
+            "entity_id": "climate.termostato",
+            "name": "Termostato",
+            "temperature": None,
+            "state": "on" if thermostat_on else "off",
+        })
+        readings.append({
+            "kind": "actuator",
+            "entity_id": "switch.caldera",
+            "name": "Caldera",
+            "temperature": None,
+            "state": "on" if caldera_on else "off",
+        })
+
+        db_add_heating_history(readings, recorded_at=sample_time)
+        total_inserted += len(readings)
+
+    return total_inserted
 
 
 def db_get_heating_state() -> Dict[str, Any]:

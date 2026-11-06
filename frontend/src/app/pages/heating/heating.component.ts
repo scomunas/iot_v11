@@ -1,4 +1,4 @@
-import { Component, HostListener, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -7,6 +7,7 @@ import {
   HeatingCalendarDay,
   HeatingCalendarResponse,
   HeatingCalendarSlot,
+  HeatingHistoryResponse,
   HeatingMap,
   HeatingMapsResponse,
   HeatingService,
@@ -23,7 +24,7 @@ import { EventDefinition, EventsService } from '../../services/events.service';
   templateUrl: './heating.component.html',
   styleUrl: './heating.component.scss'
 })
-export class HeatingComponent implements OnInit, OnDestroy {
+export class HeatingComponent implements OnInit {
   private readonly heatingService = inject(HeatingService);
   private readonly schedulesService = inject(SchedulesService);
   private readonly settingsService = inject(SettingsService);
@@ -31,11 +32,6 @@ export class HeatingComponent implements OnInit, OnDestroy {
 
   // Active Main Tab: 'maps' (Heating Maps) or 'schedules' (Schedules & Events)
   readonly activeTab = signal<'maps' | 'schedules'>('maps');
-
-  // Temperature Sensors Auto-Refresh Signals & Timer
-  readonly autoRefreshEnabled = signal<boolean>(false);
-  readonly isRefreshingTemps = signal<boolean>(false);
-  private autoRefreshTimer: any = null;
 
   // Core System State Signals
   readonly heatingState = signal<'on' | 'off'>('on');
@@ -47,6 +43,177 @@ export class HeatingComponent implements OnInit, OnDestroy {
   readonly heatingDevices = signal<DeviceItem[]>([]);
   readonly temperatureDevices = signal<DeviceItem[]>([]);
   readonly pendingResumeSchedules = signal<Schedule[]>([]);
+
+  // Temperature & Heater History Chart (last 48h)
+  readonly historyData = signal<HeatingHistoryResponse | null>(null);
+  readonly loadingHistory = signal<boolean>(false);
+  readonly heaterActuators = computed(() => this.historyData()?.actuators ?? []);
+
+  static readonly CHART_W = 900;
+  static readonly CHART_H = 320;
+  static readonly CHART_PAD = { left: 46, right: 40, top: 14, bottom: 30 };
+  static readonly SENSOR_COLORS = [
+    '#f97316', '#22d3ee', '#a78bfa', '#facc15', '#f472b6', '#4ade80', '#60a5fa', '#fb7185',
+  ];
+  static readonly ACTUATOR_COLORS = [
+    '#ef4444', '#0ea5e9', '#d946ef', '#84cc16', '#f59e0b', '#14b8a6', '#8b5cf6', '#ec4899',
+  ];
+
+  getActuatorColor(entityId: string): string {
+    const ids = this.chartActuatorIds();
+    const idx = Math.max(0, ids.indexOf(entityId));
+    return HeatingComponent.ACTUATOR_COLORS[idx % HeatingComponent.ACTUATOR_COLORS.length];
+  }
+
+  /** Actuator ids shown in the chart: configured heaters first, then any other id with samples. */
+  readonly chartActuatorIds = computed<string[]>(() => {
+    const data = this.historyData();
+    if (!data) return [];
+    const ids: string[] = data.actuators.map((a) => a.entity_id);
+    for (const s of data.actuator_samples) {
+      if (!ids.includes(s.entity_id)) ids.push(s.entity_id);
+    }
+    return ids;
+  });
+
+  readonly historyChart = computed(() => {
+    const data = this.historyData();
+    if (!data) return null;
+
+    const W = HeatingComponent.CHART_W;
+    const H = HeatingComponent.CHART_H;
+    const pad = HeatingComponent.CHART_PAD;
+    const plotW = W - pad.left - pad.right;
+    const plotH = H - pad.top - pad.bottom;
+    const hours = data.hours || 48;
+    const end = Date.now();
+    const start = end - hours * 3600 * 1000;
+    const xOf = (t: number) => pad.left + ((t - start) / (end - start)) * plotW;
+
+    // ---- Temperature lines (one per sensor) ----
+    const bySensor = new Map<string, { name: string; pts: Array<{ t: number; v: number }> }>();
+    for (const s of data.temperature_samples) {
+      if (s.temperature == null) continue;
+      const t = new Date(s.recorded_at).getTime();
+      if (t < start) continue;
+      const entry = bySensor.get(s.entity_id) ?? { name: s.name || s.entity_id, pts: [] };
+      entry.pts.push({ t, v: s.temperature });
+      bySensor.set(s.entity_id, entry);
+    }
+    const allTemps = [...bySensor.values()].flatMap((e) => e.pts.map((p) => p.v));
+    let yMin = allTemps.length ? Math.floor(Math.min(...allTemps) - 1) : 10;
+    let yMax = allTemps.length ? Math.ceil(Math.max(...allTemps) + 1) : 30;
+    if (yMax - yMin < 4) yMax = yMin + 4;
+    const yOf = (v: number) => pad.top + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+
+    const lines = [...bySensor.entries()].map(([entityId, e], i) => {
+      const color = HeatingComponent.SENSOR_COLORS[i % HeatingComponent.SENSOR_COLORS.length];
+      const path = e.pts
+        .map((p, idx) => `${idx === 0 ? 'M' : 'L'}${xOf(p.t).toFixed(1)},${yOf(p.v).toFixed(1)}`)
+        .join(' ');
+      const last = e.pts[e.pts.length - 1];
+      return {
+        entityId,
+        name: e.name,
+        color,
+        path,
+        lastValue: last?.v ?? null,
+        points: e.pts.map((p) => ({
+          x: xOf(p.t),
+          y: yOf(p.v),
+          title: `${e.name}: ${p.v.toFixed(1)} °C — ${new Date(p.t).toLocaleString()}`,
+        })),
+      };
+    });
+
+    const yTicks = Array.from({ length: 5 }, (_, i) => {
+      const v = yMin + ((yMax - yMin) * i) / 4;
+      return { y: yOf(v), label: v.toFixed(0) };
+    });
+
+    // ---- Stacked bars: heater actuators ON per 30-minute bucket ----
+    const actuatorIds = this.chartActuatorIds();
+    const N = Math.max(actuatorIds.length, 1);
+    const bucketMs = 30 * 60 * 1000;
+    const nBuckets = Math.ceil((end - start) / bucketMs);
+    const bandH = plotH * 0.3;
+    const unitH = bandH / N;
+    const bucketW = plotW / nBuckets;
+    const baseY = pad.top + plotH;
+
+    const lastStateInBucket = new Map<string, 'on' | 'off'>(); // key: `${bucket}|${entity}`
+    for (const s of data.actuator_samples) {
+      const t = new Date(s.recorded_at).getTime();
+      if (t < start || !s.state) continue;
+      const b = Math.min(nBuckets - 1, Math.floor((t - start) / bucketMs));
+      lastStateInBucket.set(`${b}|${s.entity_id}`, s.state);
+    }
+    const bars: Array<{ x: number; y: number; w: number; h: number; color: string; title: string }> = [];
+    for (let b = 0; b < nBuckets; b++) {
+      let stacked = 0;
+      actuatorIds.forEach((id, idx) => {
+        if (lastStateInBucket.get(`${b}|${id}`) !== 'on') return;
+        const color = HeatingComponent.ACTUATOR_COLORS[idx % HeatingComponent.ACTUATOR_COLORS.length];
+        const label = data.actuators.find((a) => a.entity_id === id)?.name || id;
+        const bucketStart = start + b * bucketMs;
+        bars.push({
+          x: pad.left + b * bucketW + 1,
+          y: baseY - (stacked + 1) * unitH,
+          w: Math.max(bucketW - 2, 1),
+          h: unitH,
+          color,
+          title: `${label}: ON — ${new Date(bucketStart).toLocaleString()}`,
+        });
+        stacked++;
+      });
+    }
+    const rightTicks = Array.from({ length: N + 1 }, (_, i) => ({
+      y: baseY - i * unitH,
+      label: String(i),
+    }));
+
+    // ---- X axis ticks every 6h ----
+    const xTicks: Array<{ x: number; label: string }> = [];
+    const stepMs = 6 * 3600 * 1000;
+    let tick = Math.ceil(start / stepMs) * stepMs;
+    for (; tick <= end; tick += stepMs) {
+      const d = new Date(tick);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const label = d.getHours() === 0
+        ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+        : `${hh}:00`;
+      xTicks.push({ x: xOf(tick), label });
+    }
+
+    return {
+      width: W,
+      height: H,
+      pad,
+      plotW,
+      plotH,
+      lines,
+      bars,
+      yTicks,
+      rightTicks,
+      xTicks,
+      hasTemperature: lines.length > 0,
+      hasActuators: actuatorIds.length > 0,
+    };
+  });
+
+  loadHistory(): void {
+    this.loadingHistory.set(true);
+    this.heatingService.getHeatingHistory(48).subscribe({
+      next: (res) => {
+        this.historyData.set(res);
+        this.loadingHistory.set(false);
+      },
+      error: (err) => {
+        console.error('Failed to load heating history:', err);
+        this.loadingHistory.set(false);
+      },
+    });
+  }
 
   // Heating Settings Modal State
   readonly isSettingsModalOpen = signal<boolean>(false);
@@ -272,67 +439,11 @@ export class HeatingComponent implements OnInit, OnDestroy {
     this.loadAllData();
   }
 
-  ngOnDestroy(): void {
-    this.stopAutoRefresh();
-  }
-
-  toggleAutoRefresh(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const enabled = input.checked;
-    this.autoRefreshEnabled.set(enabled);
-    if (enabled) {
-      this.startAutoRefresh();
-    } else {
-      this.stopAutoRefresh();
-    }
-  }
-
-  refreshTemperatures(): void {
-    this.isRefreshingTemps.set(true);
-    this.heatingService.getHeatingState().subscribe({
-      next: (res: HeatingStatusResponse) => {
-        this.heatingState.set(res.state);
-        if (res.helper_entity !== undefined) {
-          this.helperEntity.set(res.helper_entity || '');
-        }
-        if (res.helper_state !== undefined) {
-          this.helperState.set((res.helper_state as 'on' | 'off') || res.state || 'off');
-        }
-        this.deactivatedUntil.set(res.deactivated_until ?? null);
-        this.updatedAt.set(res.updated_at ?? null);
-        this.activeMapId.set(res.active_map_id ?? null);
-        this.activeMap.set(res.active_map ?? null);
-        this.heatingDevices.set([]);
-        this.temperatureDevices.set(res.temperature_devices || []);
-        this.pendingResumeSchedules.set(res.pending_resume_schedules || []);
-        this.isRefreshingTemps.set(false);
-      },
-      error: (err) => {
-        console.error('Failed to auto-refresh temperatures:', err);
-        this.isRefreshingTemps.set(false);
-      }
-    });
-  }
-
-  private startAutoRefresh(): void {
-    this.stopAutoRefresh();
-    this.refreshTemperatures();
-    this.autoRefreshTimer = setInterval(() => {
-      this.refreshTemperatures();
-    }, 15000);
-  }
-
-  private stopAutoRefresh(): void {
-    if (this.autoRefreshTimer) {
-      clearInterval(this.autoRefreshTimer);
-      this.autoRefreshTimer = null;
-    }
-  }
-
   loadAllData(): void {
     this.loading.set(true);
     this.loadHeatingSettings();
     this.loadState();
+    this.loadHistory();
     this.loadMaps();
     this.loadCalendar();
     this.loadSchedulesAndEvents();

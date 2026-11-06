@@ -387,6 +387,47 @@ def test_heating_full_flow(mock_ha_call, mock_sched_call, mock_ha_state):
             assert ctrl_test_resp.status_code == 200
             print("PASS: 'control_heating' executed successfully:", ctrl_test_resp.json().get("result"))
 
+            # 12.0 control_heating stores temperature and actuator history (last 48h)
+            from app.database import db_list_heating_history, db_add_heating_history, get_db
+            history = db_list_heating_history()
+            assert any(h["kind"] == "temperature" and h["temperature"] is not None for h in history)
+            assert any(h["kind"] == "actuator" and h["state"] in ("on", "off") for h in history)
+            print("PASS: 'control_heating' stored temperature and actuator history")
+
+            # 12.0.1 Samples older than 48h are purged on the next store
+            old_ts = datetime.now(timezone.utc) - timedelta(hours=49)
+            db_add_heating_history(
+                [{"kind": "temperature", "entity_id": "sensor.old_test", "name": "old", "temperature": 1.0}],
+                recorded_at=old_ts,
+            )
+            db_add_heating_history([])
+            assert not any(h["entity_id"] == "sensor.old_test" for h in db_list_heating_history())
+            with get_db() as conn:
+                assert conn.execute(
+                    "SELECT COUNT(*) FROM heating_history WHERE entity_id = 'sensor.old_test'"
+                ).fetchone()[0] == 0
+            print("PASS: heating history older than 48h is purged")
+
+            # 12.0.2 GET /heating/history exposes samples and current actuator states
+            hist_resp = client.get("/heating/history", headers=headers)
+            assert hist_resp.status_code == 200
+            hist_data = hist_resp.json()
+            assert hist_data["hours"] == 48.0
+            assert isinstance(hist_data["temperature_samples"], list) and hist_data["temperature_samples"]
+            assert isinstance(hist_data["actuator_samples"], list) and hist_data["actuator_samples"]
+            assert isinstance(hist_data["actuators"], list)
+            assert all(a["state"] in ("on", "off", "unknown") for a in hist_data["actuators"])
+            # hours is capped at 48
+            assert client.get("/heating/history?hours=500", headers=headers).json()["hours"] == 48.0
+            print("PASS: GET /heating/history returned samples and current actuator states")
+
+            # 12.0.3 POST /heating/history/seed generates mock data for last 48h
+            seed_resp = client.post("/heating/history/seed?hours=48", headers=headers)
+            assert seed_resp.status_code == 200
+            assert seed_resp.json()["status"] == "ok"
+            assert seed_resp.json()["samples_seeded"] > 0
+            print("PASS: POST /heating/history/seed populated mock history")
+
             # 12.1 Test that when heating is evaluated with threshold
             cal_resp = client.get("/heating/calendar", headers=headers).json()
             resolved_map = cal_resp.get("resolved_map") or {"id": default_map_id, "rules": {}}
